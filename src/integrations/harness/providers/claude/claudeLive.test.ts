@@ -268,6 +268,39 @@ afterEach(async () => {
   __claudeTestReset();
 });
 
+describe("claude local commands", () => {
+  it("renames the session when the CLI answers /rename itself", async () => {
+    const { events } = await startTurn("s1");
+    emit({
+      type: "assistant",
+      session_id: "sess_1",
+      message: {
+        model: "<synthetic>",
+        content: [{ type: "text", text: "Session renamed to: new_name" }],
+      },
+      local_command_run: { command: "rename", args: "new_name" },
+    });
+    expect(events).toContainEqual({
+      type: "session.renamed",
+      title: "new_name",
+    });
+  });
+
+  it("ignores a local command with no argument", async () => {
+    const { events } = await startTurn("s1");
+    events.length = 0;
+    emit({
+      type: "assistant",
+      session_id: "sess_1",
+      message: { model: "<synthetic>", content: [{ type: "text", text: "" }] },
+      local_command_run: { command: "rename", args: "" },
+    });
+    expect(
+      events.some((event) => event.type === "session.renamed"),
+    ).toBe(false);
+  });
+});
+
 describe("claude streamed tool inputs", () => {
   it("replaces an empty Shell row with the complete assistant tool input", async () => {
     const { events, turn } = await startTurn("s1");

@@ -597,6 +597,24 @@ export function isSubagentMessage(rec: Record<string, unknown>): boolean {
   return typeof parent === "string" && parent.length > 0;
 }
 
+export type ClaudeLocalCommand = { command: string; args: string };
+
+/**
+ * A slash command Claude Code answers itself, without a model turn (its
+ * assistant record carries `model: "<synthetic>"`) — `/rename`, `/model`,
+ * `/effort`, `/color`, etc. MonoCode's own session state (title, model,
+ * effort) has no other way to learn these ran, since nothing else marks
+ * them: the reply is an ordinary-looking assistant text block otherwise.
+ */
+export function localCommandFromAssistant(
+  rec: Record<string, unknown>,
+): ClaudeLocalCommand | null {
+  const run = asRecord(rec.local_command_run);
+  const command = stringField(run, "command");
+  if (!command) return null;
+  return { command, args: stringField(run, "args") ?? "" };
+}
+
 export function isAgentTaskType(taskType: string | undefined): boolean {
   const key = (taskType ?? "").toLowerCase();
   return key === "local_agent" || key === "remote_agent";

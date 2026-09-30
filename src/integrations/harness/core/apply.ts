@@ -131,6 +131,10 @@ export function applyHarnessEvent(
       });
     case "session.providerBound":
       return { ...session, providerSessionId: event.providerSessionId };
+    case "session.renamed":
+      return event.title.trim()
+        ? { ...session, title: event.title.trim() }
+        : session;
     case "turn.started": {
       const index = lastMatchingBlock(
         session.blocks,

@@ -34,6 +34,7 @@ import {
   isTerminalAgentTaskStatus,
   isTodoTool,
   isUsageLimitResult,
+  localCommandFromAssistant,
   normalizeClaudeCliEffort,
   parseBackgroundTasks,
   parseControlCancelId,
@@ -747,6 +748,23 @@ function handleStreamEvent(live: Live, rec: Record<string, unknown>): void {
   }
 }
 
+/**
+ * Sync MonoCode's own session title after `/rename` (see
+ * `localCommandFromAssistant`). Without this, `/rename` changes the CLI's
+ * own conversation name while MonoCode's title sits unchanged, since that
+ * reply is an ordinary-looking assistant text block otherwise.
+ */
+function applyClaudeLocalCommand(
+  live: Live,
+  command: { command: string; args: string },
+): void {
+  const args = command.args.trim();
+  if (!args) return;
+  if (command.command === "rename") {
+    live.onEvent({ type: "session.renamed", title: args });
+  }
+}
+
 function handleAssistant(live: Live, rec: Record<string, unknown>): void {
   if (isSubagentMessage(rec)) {
     noteSubagentNarration(live, rec);
@@ -755,6 +773,9 @@ function handleAssistant(live: Live, rec: Record<string, unknown>): void {
     }
     return;
   }
+
+  const localCommand = localCommandFromAssistant(rec);
+  if (localCommand) applyClaudeLocalCommand(live, localCommand);
 
   const used = contextUsedFromAssistant(rec);
   if (used !== undefined) live.onEvent({ type: "context", used });

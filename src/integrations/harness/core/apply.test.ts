@@ -25,6 +25,32 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+describe("session.renamed", () => {
+  it("applies the CLI's own rename to the session title", () => {
+    let session = newSession("claude", "/tmp");
+    session = applyHarnessEvent(session, {
+      type: "session.renamed",
+      title: "new_name",
+    });
+    expect(session.title).toBe("new_name");
+  });
+
+  it("trims the title and ignores a blank rename", () => {
+    const original = newSession("claude", "/tmp");
+    let session = applyHarnessEvent(original, {
+      type: "session.renamed",
+      title: "  padded  ",
+    });
+    expect(session.title).toBe("padded");
+
+    session = applyHarnessEvent(session, {
+      type: "session.renamed",
+      title: "   ",
+    });
+    expect(session.title).toBe("padded");
+  });
+});
+
 describe("background work", () => {
   it("tracks what a yielded turn waits on and drops it when the turn ends", () => {
     let session = appendUser(newSession("claude", "/tmp"), "hi");

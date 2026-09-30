@@ -15,6 +15,7 @@ import {
   isSubagentMessage,
   isTodoTool,
   listModelsFromControlResponse,
+  localCommandFromAssistant,
   normalizeClaudeCliEffort,
   parseBackgroundTasks,
   parseClaudeVersion,
@@ -624,6 +625,38 @@ describe("list_models catalog", () => {
     expect(isClaudeInitMessage({ type: "assistant", subtype: "init" })).toBe(
       false,
     );
+  });
+});
+
+describe("localCommandFromAssistant", () => {
+  it("reads the command and its argument off a synthetic assistant record", () => {
+    expect(
+      localCommandFromAssistant({
+        type: "assistant",
+        message: {
+          model: "<synthetic>",
+          content: [{ type: "text", text: "Session renamed to: new_name" }],
+        },
+        local_command_run: { command: "rename", args: "new_name" },
+      }),
+    ).toEqual({ command: "rename", args: "new_name" });
+  });
+
+  it("defaults args to an empty string when omitted", () => {
+    expect(
+      localCommandFromAssistant({
+        local_command_run: { command: "clear" },
+      }),
+    ).toEqual({ command: "clear", args: "" });
+  });
+
+  it("returns null for an ordinary assistant record", () => {
+    expect(
+      localCommandFromAssistant({
+        type: "assistant",
+        message: { content: [{ type: "text", text: "hi" }] },
+      }),
+    ).toBeNull();
   });
 });
 
