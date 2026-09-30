@@ -11,11 +11,12 @@ import type { NativeCommand } from "../../core/nativeCommands";
 import {
   buildClaudeSpawnArgs,
   buildControlRequest,
+  KNOWN_TERMINAL_ONLY_COMMANDS,
   nativeCommandsFromControlResponse,
   parseJsonLine,
 } from "./claudeProtocol";
 
-const PROBE_ID = "monocode-claude-commands-probe";
+const PROBE_ID_PREFIX = "monocode-claude-commands-probe";
 const INIT_REQUEST_ID = "monocode_commands_init";
 const DISCOVERY_TIMEOUT_MS = 15_000;
 
@@ -28,6 +29,10 @@ const DISCOVERY_TIMEOUT_MS = 15_000;
 export async function discoverClaudeCommands(cwd: string): Promise<NativeCommand[]> {
   const { path } = await resolveClaudeBinary();
   const probeCwd = cwd.trim() || (await homeDir());
+  // Unique per call: watchChild keys handlers by id, so two probes racing on
+  // a shared id would replace each other's handler and cross-deliver (or
+  // lose) their responses.
+  const PROBE_ID = `${PROBE_ID_PREFIX}-${crypto.randomUUID()}`;
 
   let resolveCommands: ((commands: NativeCommand[]) => void) | null = null;
   let rejectCommands: ((error: Error) => void) | null = null;
@@ -47,7 +52,16 @@ export async function discoverClaudeCommands(cwd: string): Promise<NativeCommand
       const rec = parseJsonLine(line);
       if (!rec) return;
       const commands = nativeCommandsFromControlResponse(rec, INIT_REQUEST_ID);
-      if (commands) resolveCommands?.(commands);
+      // No turn runs in this probe, so `system/init` never arrives and the
+      // CLI's own terminal-only list is never reported — fall back to the
+      // known-stable set instead of publishing TUI-only commands as usable.
+      if (commands) {
+        resolveCommands?.(
+          commands.filter(
+            (command) => !KNOWN_TERMINAL_ONLY_COMMANDS.has(command.name),
+          ),
+        );
+      }
     },
     () => rejectCommands?.(new Error("Claude Code command probe exited")),
   );

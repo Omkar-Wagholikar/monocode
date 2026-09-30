@@ -34,6 +34,7 @@ import {
   isTerminalAgentTaskStatus,
   isTodoTool,
   isUsageLimitResult,
+  KNOWN_TERMINAL_ONLY_COMMANDS,
   nativeCommandsFromControlResponse,
   normalizeClaudeCliEffort,
   parseBackgroundTasks,
@@ -496,7 +497,7 @@ async function ensureLive(input: HarnessSessionInput): Promise<Live> {
     manualCompaction: false,
     compactionConfirmed: false,
     initRequestId: "",
-    terminalOnlyCommands: new Set(),
+    terminalOnlyCommands: new Set(KNOWN_TERMINAL_ONLY_COMMANDS),
   };
   liveRef.current = live;
 

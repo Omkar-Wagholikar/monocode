@@ -398,6 +398,22 @@ export function nativeCommandsFromControlResponse(
 }
 
 /**
+ * Best-effort fallback for terminal-only command names when no live session
+ * has reported `system/init` yet (the cold-discovery probe never sends a
+ * real turn, so it never sees that broadcast — see
+ * `terminalSlashCommandsFromSystemInit`). Small and stable enough to hardcode:
+ * these are Claude's own interactive-terminal affordances (health checks,
+ * prompt-bar color, plugin/skill reload), not something a project or plugin
+ * adds. A live session's own reported list, once seen, always wins over this.
+ */
+export const KNOWN_TERMINAL_ONLY_COMMANDS: ReadonlySet<string> = new Set([
+  "doctor",
+  "color",
+  "focus",
+  "reload-plugins",
+]);
+
+/**
  * Names Claude only accepts from its interactive TUI (e.g. `/doctor`,
  * `/color`) — meaningless over the headless protocol MonoCode drives it
  * with. Only ever arrives on the plain `system/init` broadcast a real turn

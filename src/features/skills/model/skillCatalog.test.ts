@@ -352,6 +352,26 @@ describe("Claude native commands merged with file skills", () => {
       description: "The built-in reviewer",
     });
   });
+
+  it("keeps file skills when Claude command discovery fails", async () => {
+    mocks.discoverClaudeCommands.mockRejectedValue(new Error("probe timed out"));
+    mocks.listSkills.mockResolvedValue([
+      {
+        name: "review-pr",
+        description: "Review pull requests",
+        path: "/repo/.claude/skills/review-pr/SKILL.md",
+        source: "claude",
+        scope: "project",
+      },
+    ]);
+
+    const catalog = await loadSkills({ harness: "claude", cwd: "/repo" });
+
+    expect(catalog).toContainEqual(
+      expect.objectContaining({ kind: "file", name: "review-pr" }),
+    );
+    expect(catalog.some((skill) => skill.kind === "native")).toBe(false);
+  });
 });
 
 describe("file skill visibility preferences", () => {

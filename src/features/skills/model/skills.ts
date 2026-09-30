@@ -306,7 +306,14 @@ function startCatalogLoad(
 async function loadCatalog(context: SkillCatalogContext): Promise<Skill[]> {
   const provider = getHarness(context.harness)?.commands;
   if (provider) {
-    const commands = await provider.discover(context);
+    // A provider that only merges (never replaces) file skills shouldn't let
+    // its own discovery failure hide skills that don't depend on it — a
+    // timed-out Claude probe would otherwise blank out every `.claude/skills`
+    // entry too.
+    const commands = await provider.discover(context).catch((error: unknown) => {
+      if (!provider.mergesFileSkills) throw error;
+      return [];
+    });
     const nativeSkills: Skill[] = commands.map((command): NativeSkill => ({
       kind: "native",
       ...command,
