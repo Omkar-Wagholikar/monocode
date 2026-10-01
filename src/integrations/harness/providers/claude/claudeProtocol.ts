@@ -615,6 +615,24 @@ export function localCommandFromAssistant(
   return { command, args: stringField(run, "args") ?? "" };
 }
 
+/**
+ * The name Claude actually saved after `/rename`, read from its own
+ * confirmation text rather than trusted from the request. `local_command_run`
+ * only carries the typed argument: `/rename` with no name asks Claude to
+ * generate one (reported only here, never in `args`), and a request can in
+ * principle be adjusted or refused the same way — this is the one place that
+ * says what was actually saved. Null when the reply doesn't confirm a
+ * rename at all (e.g. "Could not generate a name: no conversation context
+ * yet"), so a failed or refused rename is never applied.
+ */
+export function confirmedRenameFromAssistant(
+  rec: Record<string, unknown>,
+): string | null {
+  const text = assistantTextBlocks(rec).join("");
+  const match = /^Session renamed to: (.+)$/.exec(text);
+  return match ? match[1].trim() || null : null;
+}
+
 export function isAgentTaskType(taskType: string | undefined): boolean {
   const key = (taskType ?? "").toLowerCase();
   return key === "local_agent" || key === "remote_agent";

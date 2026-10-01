@@ -17,6 +17,7 @@ import {
   assistantTextBlocks,
   assistantThinkingBlocks,
   assistantToolUses,
+  confirmedRenameFromAssistant,
   contextFromResult,
   contextUsedFromAssistant,
   turnMetricsFromResult,
@@ -753,16 +754,21 @@ function handleStreamEvent(live: Live, rec: Record<string, unknown>): void {
  * `localCommandFromAssistant`). Without this, `/rename` changes the CLI's
  * own conversation name while MonoCode's title sits unchanged, since that
  * reply is an ordinary-looking assistant text block otherwise.
+ *
+ * Reads the saved name from the CLI's own confirmation text
+ * (`confirmedRenameFromAssistant`) rather than the requested
+ * `local_command_run.args`: a bare `/rename` asks Claude to generate a name,
+ * which never appears in `args`, and a request Claude adjusted or refused
+ * must not be taken as if it had been applied verbatim.
  */
 function applyClaudeLocalCommand(
   live: Live,
+  rec: Record<string, unknown>,
   command: { command: string; args: string },
 ): void {
-  const args = command.args.trim();
-  if (!args) return;
-  if (command.command === "rename") {
-    live.onEvent({ type: "session.renamed", title: args });
-  }
+  if (command.command !== "rename") return;
+  const title = confirmedRenameFromAssistant(rec);
+  if (title) live.onEvent({ type: "session.renamed", title });
 }
 
 function handleAssistant(live: Live, rec: Record<string, unknown>): void {
@@ -775,7 +781,7 @@ function handleAssistant(live: Live, rec: Record<string, unknown>): void {
   }
 
   const localCommand = localCommandFromAssistant(rec);
-  if (localCommand) applyClaudeLocalCommand(live, localCommand);
+  if (localCommand) applyClaudeLocalCommand(live, rec, localCommand);
 
   const used = contextUsedFromAssistant(rec);
   if (used !== undefined) live.onEvent({ type: "context", used });

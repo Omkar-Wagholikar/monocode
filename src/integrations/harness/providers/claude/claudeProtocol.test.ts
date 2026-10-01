@@ -8,6 +8,7 @@ import {
   askUserQuestionAllowInput,
   buildClaudeSpawnArgs,
   buildClaudeUserMessage,
+  confirmedRenameFromAssistant,
   contextFromResult,
   contextUsedFromAssistant,
   extractExitPlanModePlan,
@@ -657,6 +658,44 @@ describe("localCommandFromAssistant", () => {
         message: { content: [{ type: "text", text: "hi" }] },
       }),
     ).toBeNull();
+  });
+});
+
+describe("confirmedRenameFromAssistant", () => {
+  function assistantText(text: string): Record<string, unknown> {
+    return {
+      type: "assistant",
+      message: { model: "<synthetic>", content: [{ type: "text", text }] },
+    };
+  }
+
+  it("reads the saved name off a successful confirmation", () => {
+    expect(
+      confirmedRenameFromAssistant(assistantText("Session renamed to: new_name")),
+    ).toBe("new_name");
+  });
+
+  it("reads a Claude-generated name from a bare /rename", () => {
+    expect(
+      confirmedRenameFromAssistant(
+        assistantText("Session renamed to: binary-search-tree-explanation"),
+      ),
+    ).toBe("binary-search-tree-explanation");
+  });
+
+  it("returns null when the CLI refused instead of confirming", () => {
+    expect(
+      confirmedRenameFromAssistant(
+        assistantText(
+          "Could not generate a name: no conversation context yet. Usage: /rename <name>",
+        ),
+      ),
+    ).toBeNull();
+  });
+
+  it("returns null for any other reply shape", () => {
+    expect(confirmedRenameFromAssistant(assistantText("hi"))).toBeNull();
+    expect(confirmedRenameFromAssistant({})).toBeNull();
   });
 });
 
