@@ -398,6 +398,63 @@ describe("Composer question focus", () => {
     expect(textarea.value).not.toContain("create-skill");
   });
 
+  it("still lets Enter commit a weak match after the user explicitly arrows to it", async () => {
+    const onSubmit = vi.fn(() => true);
+    await act(async () =>
+      root.render(
+        createElement(Composer, {
+          focused: true,
+          harness: "claude",
+          model: "claude-sonnet",
+          runtimeMode: "supervised",
+          executionCwd: "/repo",
+          hideProjectPicker: true,
+          hideBranchPicker: true,
+          onFocus: vi.fn(),
+          onCwdChange: vi.fn(),
+          onModelChange: vi.fn(),
+          onRuntimeModeChange: vi.fn(),
+          onSubmit,
+        }),
+      ),
+    );
+    const textarea = container.querySelector("textarea")!;
+    await act(async () => {
+      textarea.value = "/rename";
+      textarea.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    const options = Array.from(
+      container.querySelectorAll<HTMLButtonElement>('[role="option"]'),
+    );
+    expect(options.some((o) => o.textContent?.includes("create-skill"))).toBe(
+      true,
+    );
+
+    await act(async () =>
+      textarea.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "ArrowDown",
+          bubbles: true,
+          cancelable: true,
+        }),
+      ),
+    );
+    await act(async () =>
+      textarea.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "Enter",
+          bubbles: true,
+          cancelable: true,
+        }),
+      ),
+    );
+    // Deliberately navigated, so Enter commits to it even though it's a
+    // weak (description-only) match — unlike a bare Enter with no
+    // navigation, which must fall through to literal text instead.
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(textarea.value.startsWith("/create-skill")).toBe(true);
+  });
+
   it("offers Operator above Orchestrator and sends the /operator command", async () => {
     const onSubmit = vi.fn().mockReturnValueOnce(false).mockReturnValue(true);
     await act(async () =>
