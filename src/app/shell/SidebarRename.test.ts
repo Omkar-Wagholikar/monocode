@@ -1783,3 +1783,100 @@ it("labels preserved sessions as having no branch selected", () => {
   expect(card().textContent).not.toContain("No branch selected");
   expect(card().textContent).toContain("project/main");
 });
+
+describe("session title rename reveal", () => {
+  function titleEl(): HTMLElement {
+    return card().querySelector(".line-clamp-1")!;
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  it("reveals the new title character by character from the middle out, then settles to plain text", () => {
+    act(render);
+    expect(titleEl().className).not.toContain("session-title-renamed");
+
+    // Odd length on purpose: it has a single exact-center character, so its
+    // distance is exactly 0 rather than tied between two middle characters.
+    const next = "A whole new title";
+    props.sessions = [
+      { ...props.sessions[0], title: formatSessionTitle("codex", next) },
+    ];
+    act(render);
+    expect(titleEl().className).toContain("session-title-renamed");
+
+    const chars = titleEl().querySelectorAll(".session-title-char");
+    expect(chars).toHaveLength(next.length);
+    expect([...chars].map((el) => el.textContent).join("")).toBe(next);
+    const middle = chars[Math.floor((chars.length - 1) / 2)] as HTMLElement;
+    expect(middle.style.getPropertyValue("--char-distance")).toBe("0");
+    const first = chars[0] as HTMLElement;
+    const last = chars[chars.length - 1] as HTMLElement;
+    expect(Number(first.style.getPropertyValue("--char-distance"))).toBe(1);
+    expect(Number(last.style.getPropertyValue("--char-distance"))).toBe(1);
+    // Hidden from assistive tech per-character; the real string is exposed
+    // once, separately, for screen readers and for copy/selection.
+    expect(titleEl().querySelector('[aria-hidden="true"]')).not.toBeNull();
+    expect(titleEl().querySelector(".sr-only")?.textContent).toBe(next);
+
+    act(() => vi.advanceTimersByTime(1000));
+    expect(titleEl().className).toContain("session-title-renamed");
+    const settledChars = titleEl().querySelectorAll(".session-title-char");
+    expect(settledChars).toHaveLength(next.length);
+    expect([...settledChars].map((el) => el.textContent).join("")).toBe(next);
+  });
+
+  it("replays the reveal on a second, successive rename", () => {
+    act(render);
+
+    const first = "A whole new title";
+    props.sessions = [
+      { ...props.sessions[0], title: formatSessionTitle("codex", first) },
+    ];
+    act(render);
+    act(() => vi.advanceTimersByTime(1000));
+    const firstTitleEl = titleEl();
+    const firstCharEl = titleEl().querySelectorAll(".session-title-char")[0];
+    expect(firstCharEl.textContent).toBe("A");
+
+    // Same length as `first`, so the per-character spans share every index
+    // with the previous reveal — the exact case a plain index `key` would
+    // have reused rather than remounted, leaving the second reveal's
+    // animation never actually applied.
+    const second = "B whole new title";
+    props.sessions = [
+      { ...props.sessions[0], title: formatSessionTitle("codex", second) },
+    ];
+    act(render);
+    expect(titleEl().className).toContain("session-title-renamed");
+    // The element hosting the ripple (::after on this same span) must
+    // itself be a fresh node too, not just its character children — a
+    // CSS animation only replays on an element that was actually
+    // (re)mounted, and this span is what the ripple lives on.
+    expect(titleEl()).not.toBe(firstTitleEl);
+    const secondCharEl = titleEl().querySelectorAll(".session-title-char")[0];
+    expect(secondCharEl.textContent).toBe("B");
+    // A genuinely new element, not the same node with its text swapped —
+    // only a fresh mount makes the browser replay the CSS animation.
+    expect(secondCharEl).not.toBe(firstCharEl);
+
+    act(() => vi.advanceTimersByTime(1000));
+    expect(
+      [...titleEl().querySelectorAll(".session-title-char")]
+        .map((el) => el.textContent)
+        .join(""),
+    ).toBe(second);
+  });
+
+  it("does not reveal on mount or on an unrelated re-render", () => {
+    act(render);
+    expect(titleEl().className).not.toContain("session-title-renamed");
+
+    // Same title, different unrelated field — re-renders the card without
+    // the title itself changing.
+    props.sessions = [{ ...props.sessions[0], updatedAt: Date.now() + 1 }];
+    act(render);
+    expect(titleEl().className).not.toContain("session-title-renamed");
+  });
+});
