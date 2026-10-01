@@ -102,6 +102,7 @@ import {
   hasNativeCommands,
   isNativeCommandPrompt,
   replaceSlashToken,
+  skillMatchesByNameOrInvocation,
   skillTextParts,
   slashTokenAt,
   type Skill,
@@ -1639,7 +1640,11 @@ export function Composer({
       }
       if (e.key === "Enter" && !e.shiftKey) {
         const skill = rankedSkills[skillActive];
-        if (skill) {
+        // A description-only fuzzy hit (e.g. "rename" is a valid subsequence
+        // of create-skill's description) should not silently swallow a
+        // literal command the user is clearly typing to send as-is — only
+        // auto-pick on Enter when the match is strong (name/invocation).
+        if (skill && skillMatchesByNameOrInvocation(skill, slash.query)) {
           e.preventDefault();
           pickSkill(skill);
           return;
