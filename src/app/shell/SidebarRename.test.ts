@@ -1918,10 +1918,9 @@ describe("session title rename reveal", () => {
     expect(titleEl().querySelector(".sr-only")?.textContent).toBe(next);
 
     act(() => vi.advanceTimersByTime(1000));
-    expect(titleEl().className).toContain("session-title-renamed");
-    const settledChars = titleEl().querySelectorAll(".session-title-char");
-    expect(settledChars).toHaveLength(next.length);
-    expect([...settledChars].map((el) => el.textContent).join("")).toBe(next);
+    expect(titleEl().className).not.toContain("session-title-renamed");
+    expect(titleEl().querySelectorAll(".session-title-char")).toHaveLength(0);
+    expect(titleEl().textContent).toBe(next);
   });
 
   it("replays the reveal on a second, successive rename", () => {
@@ -1932,7 +1931,10 @@ describe("session title rename reveal", () => {
       { ...props.sessions[0], title: formatSessionTitle("codex", first) },
     ];
     act(render);
-    act(() => vi.advanceTimersByTime(1000));
+    // Advance partway through the reveal — enough to observe the animating
+    // characters, but before the 1000ms clear timeout settles them back to
+    // plain text, so the second rename below still has something to replace.
+    act(() => vi.advanceTimersByTime(500));
     const firstTitleEl = titleEl();
     const firstCharEl = titleEl().querySelectorAll(".session-title-char")[0];
     expect(firstCharEl.textContent).toBe("A");
@@ -1959,11 +1961,9 @@ describe("session title rename reveal", () => {
     expect(secondCharEl).not.toBe(firstCharEl);
 
     act(() => vi.advanceTimersByTime(1000));
-    expect(
-      [...titleEl().querySelectorAll(".session-title-char")]
-        .map((el) => el.textContent)
-        .join(""),
-    ).toBe(second);
+    expect(titleEl().className).not.toContain("session-title-renamed");
+    expect(titleEl().querySelectorAll(".session-title-char")).toHaveLength(0);
+    expect(titleEl().textContent).toBe(second);
   });
 
   it("does not reveal on mount or on an unrelated re-render", () => {
@@ -1975,5 +1975,24 @@ describe("session title rename reveal", () => {
     props.sessions = [{ ...props.sessions[0], updatedAt: Date.now() + 1 }];
     act(render);
     expect(titleEl().className).not.toContain("session-title-renamed");
+  });
+
+  it("reveals a joined emoji as one character, not split across code points", () => {
+    act(render);
+
+    // A family emoji ("\u{1F469}‍\u{1F467}") is several UTF-16 code
+    // points joined by zero-width joiners — `[...text]` would split it into
+    // multiple spans, each animating (and rendering) independently.
+    const next = "\u{1F469}‍\u{1F467} Family trip";
+    props.sessions = [
+      { ...props.sessions[0], title: formatSessionTitle("codex", next) },
+    ];
+    act(render);
+
+    const chars = titleEl().querySelectorAll(".session-title-char");
+    expect([...chars].map((el) => el.textContent)[0]).toBe(
+      "\u{1F469}‍\u{1F467}",
+    );
+    expect([...chars].map((el) => el.textContent).join("")).toBe(next);
   });
 });

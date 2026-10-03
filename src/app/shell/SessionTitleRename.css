@@ -1,7 +1,6 @@
 .session-title-renamed {
   position: relative;
   isolation: isolate;
-  display: inline-block;
 }
 
 .session-title-renamed::after {
