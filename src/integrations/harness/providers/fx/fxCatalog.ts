@@ -24,9 +24,9 @@ export function refreshFxCatalog(): Promise<void> {
   return inflight;
 }
 
-export async function discoverFxModels(workingDirectory?: string) {
+async function discoverFxModels() {
   const { path } = await resolveFxBinary();
-  const cwd = workingDirectory ?? (await homeDir());
+  const cwd = await homeDir();
   const [modelsOutput, statusOutput] = await Promise.all([
     execChild(path, ["models", "--json"], cwd, "fx"),
     execChild(path, ["status", "--json"], cwd, "fx").catch(() => ""),

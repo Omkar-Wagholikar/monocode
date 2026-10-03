@@ -1,3 +1,4 @@
+import { code } from "@streamdown/code";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import {
@@ -16,20 +17,17 @@ import {
 } from "react";
 import { harden } from "rehype-harden";
 import {
-  Block,
   CodeBlock,
   Streamdown,
   defaultRehypePlugins,
   defaultRemarkPlugins,
   useIsCodeFenceIncomplete,
-  type BlockProps,
   type Components,
 } from "streamdown";
 import type { PluggableList } from "unified";
 import { ExplorerMenu, type ExplorerMenuItem } from "../../files/ui/ExplorerMenu";
 import { FileActionError } from "../../files/ui/FileActionError";
 import { FileTypeIcon } from "../../files/ui/FileTypeIcon";
-import { boundedCode } from "../../files/editor/codeHighlightPlugin";
 import { createLazyMermaidPlugin } from "../../files/editor/mermaidPlugin";
 import {
   displayPath,
@@ -47,7 +45,6 @@ import { INBOX_MEDIA_PREFIXES, isInboxMediaUrl } from "../../inbox/model/inboxMe
 import { isNoteImagePath } from "../../notes";
 import { IS_MAC, IS_WIN } from "../../../platform/tauri/platform";
 import { InboxMedia } from "../../inbox/ui/InboxMedia";
-import { rehypeHardBreaks } from "./hardBreaks";
 import { rehypeWordFade, usePacedText, useWordFading } from "./wordFade";
 
 const MERMAID_BASE_CONFIG = {
@@ -63,7 +60,7 @@ const mermaid = createLazyMermaidPlugin({
   },
 });
 
-const MARKDOWN_PLUGINS = { code: boundedCode, mermaid };
+const MARKDOWN_PLUGINS = { code, mermaid };
 
 const MARKDOWN_REHYPE_PLUGINS: PluggableList = [
   defaultRehypePlugins.raw,
@@ -211,17 +208,6 @@ const LANGUAGE_FILE_NAMES: Record<string, string> = {
   zsh: "code.sh",
 };
 
-// Shiki (via Streamdown's CodeBlock) treats these as plaintext and renders no
-// syntax colors at all, which is common in agent output (pseudocode, file
-// trees, command output) fenced as `text` or left untagged. Falling back to
-// the JS grammar for these still colors strings, numbers, and punctuation,
-// matching what most agent-output fences actually look like.
-const PLAINTEXT_FENCE_LANGUAGES = new Set(["text", "plaintext", "txt", ""]);
-
-function highlightLanguageFor(language: string): string {
-  return PLAINTEXT_FENCE_LANGUAGES.has(language.toLowerCase()) ? "js" : language;
-}
-
 type MarkdownLinkProps = ComponentProps<"a"> & { node?: unknown };
 
 function MarkdownLink({
@@ -344,15 +330,6 @@ function MarkdownCode({
     (fence.language ? fileNameForLanguage(fence.language) : "");
   const lineNumbers = !/\bnoLineNumbers\b/.test(meta);
   const code = textContent(children);
-  // highlightLanguageFor swaps the fence language for "js" so Shiki still
-  // colors plaintext fences, but Streamdown's CodeBlock reuses that same
-  // value for the header label. Without this, a `text` fence would show a
-  // "js" header, and an untagged fence would gain a header it never had.
-  // Render our own label with the original language instead, and hide
-  // Streamdown's via CSS (see .markdown-code-fallback-label in index.css).
-  const isPlaintextFallback = PLAINTEXT_FENCE_LANGUAGES.has(
-    fence.language.toLowerCase(),
-  );
 
   return (
     <div className="markdown-code-shell" dir="ltr">
@@ -363,15 +340,13 @@ function MarkdownCode({
       ) : null}
       {fence.filePath ? (
         <MarkdownCodePath path={fence.filePath} startLine={fence.startLine} />
-      ) : isPlaintextFallback ? (
-        <span className="markdown-code-fallback-label">{fence.language}</span>
       ) : null}
       <CodeCopyButton code={code} />
       <CodeBlock
         className={className}
         code={code}
         isIncomplete={incomplete}
-        language={highlightLanguageFor(fence.language)}
+        language={fence.language}
         lineNumbers={lineNumbers}
         startLine={fence.startLine}
       />
@@ -483,25 +458,6 @@ const MARKDOWN_COMPONENTS = {
   img: MarkdownImage,
 } satisfies Components;
 
-/**
- * With dir="auto" Streamdown wraps each block in
- * `<div dir="..." style="display: contents">`. WebKit's triple-click then runs
- * past the block to the end of the reply, because a contents box gives the
- * selection no block boundary to stop at (#496). Keep the per-block direction
- * but put it on a real block box; index.css zeroes its margins so spacing still
- * comes from the block inside it.
- */
-function DirectionalBlock({ dir, ...props }: BlockProps) {
-  const block = <Block {...props} />;
-  return dir ? (
-    <div dir={dir} className="agent-markdown-block">
-      {block}
-    </div>
-  ) : (
-    block
-  );
-}
-
 export const AgentMarkdown = memo(function AgentMarkdown({
   text,
   streaming,
@@ -509,7 +465,6 @@ export const AgentMarkdown = memo(function AgentMarkdown({
   cwd,
   onOpenFile,
   allowRemoteMedia,
-  hardBreaks,
 }: {
   text: string;
   streaming?: boolean;
@@ -517,8 +472,6 @@ export const AgentMarkdown = memo(function AgentMarkdown({
   cwd?: string;
   onOpenFile?: OpenFileFn;
   allowRemoteMedia?: boolean;
-  /** Show a newline inside a block as a line break, as a document does (#591). */
-  hardBreaks?: boolean;
 }) {
   const [fileMenu, setFileMenu] = useState<FileLinkMenu | null>(null);
   const [fileActionError, setFileActionError] = useState<string | null>(null);
@@ -548,20 +501,13 @@ export const AgentMarkdown = memo(function AgentMarkdown({
   // element. Dropping one mid-fade would remount it and fade it again. Once
   // the fade is over they come off, or a finished reply would keep a span per
   // word for as long as this transcript stays mounted.
-  const baseRehypePlugins = fading
+  const rehypePlugins = fading
     ? remoteMedia
       ? FADING_INBOX_MEDIA_REHYPE_PLUGINS
       : FADING_MARKDOWN_REHYPE_PLUGINS
     : remoteMedia
       ? INBOX_MEDIA_REHYPE_PLUGINS
       : MARKDOWN_REHYPE_PLUGINS;
-  // Hard breaks go last, so nothing after them undoes them, and after the word
-  // fade, whose word spans would otherwise hide the newlines from them.
-  const rehypePlugins = useMemo(
-    () =>
-      hardBreaks ? [...baseRehypePlugins, rehypeHardBreaks] : baseRehypePlugins,
-    [baseRehypePlugins, hardBreaks],
-  );
 
   const onFileMenuPick = (id: string) => {
     if (!fileMenu) return;
@@ -608,7 +554,6 @@ export const AgentMarkdown = memo(function AgentMarkdown({
             // Streamdown keeps a parsed tree while the text is unchanged, so
             // the plugin swap has to remount it once the fade is over.
             key={fading ? "fade" : "plain"}
-            BlockComponent={DirectionalBlock}
             className={`agent-markdown min-w-0 font-sans text-sm leading-6 ${fading ? "word-fading" : ""} ${className ?? ""}`}
             components={MARKDOWN_COMPONENTS}
             controls={false}
@@ -648,14 +593,12 @@ export const MarkdownPreview = memo(function MarkdownPreview({
   cwd,
   onOpenFile,
   header,
-  hardBreaks,
 }: {
   text: string;
   streaming?: boolean;
   cwd?: string;
   onOpenFile?: OpenFileFn;
   header?: ReactNode;
-  hardBreaks?: boolean;
 }) {
   const lockOverscroll = useLockOverscroll<HTMLDivElement>();
 
@@ -674,7 +617,6 @@ export const MarkdownPreview = memo(function MarkdownPreview({
           streaming={streaming}
           cwd={cwd}
           onOpenFile={onOpenFile}
-          hardBreaks={hardBreaks}
         />
       </div>
     </div>

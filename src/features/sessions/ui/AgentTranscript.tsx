@@ -27,7 +27,6 @@ import {
   useState,
   type CSSProperties,
   type ReactNode,
-  type RefObject,
 } from "react";
 import { flushSync } from "react-dom";
 import { AttachmentChip } from "./AttachmentChip";
@@ -43,7 +42,7 @@ import { OrchestrationPreview } from "../../orchestration/ui/OrchestrationPrevie
 import { TaskListPreview } from "./TaskListPreview";
 import { HandoffButton, SecondOpinionButton } from "./SecondOpinionButton";
 import { SecondOpinionCard } from "./SecondOpinionCard";
-import { NoteMiniCard } from "../../notes/ui/NoteMiniCard";
+import { NoteMiniCard } from "../../notes/ui";
 
 import { TerminalSpinner } from "./TerminalSpinner";
 import { Popover } from "../../../shared/ui/Popover";
@@ -99,7 +98,6 @@ import {
   groupTurnItems,
   groupTurns,
   initialThinkingIndex,
-  isFailedStatus,
   isIncompleteTool,
   isSubagentBlock,
   isThinkingBlock,
@@ -181,7 +179,6 @@ type Props = {
   onOpenDiff?: (path: string) => void;
   onOpenPlan?: (blockId: string) => void;
   onBuildPlan?: (blockId: string, target?: PlanBuildTarget) => void;
-  planBuildTargets?: boolean;
   onSecondOpinion?: (target: ModelTarget, turn: Block[]) => void;
   onHandoff?: (target: ModelTarget, turn: Block[]) => void;
   onEditLastTurn?: () => void;
@@ -224,7 +221,6 @@ function AgentTranscriptComponent({
   onOpenDiff,
   onOpenPlan,
   onBuildPlan,
-  planBuildTargets = true,
   onSecondOpinion,
   onHandoff,
   onEditLastTurn,
@@ -324,14 +320,10 @@ function AgentTranscriptComponent({
 
   const syncPinned = useCallback(
     (el: HTMLElement) => {
-      const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
-      // Scrolling up inside the bottom margin is the reader leaving. Pinning
-      // again here would snap each streamed chunk back down under the wheel.
-      const leaving =
-        !stickToBottom.current && distance > distanceFromBottom.current;
-      const near = isNearBottom(el) && !leaving;
+      const near = isNearBottom(el);
       stickToBottom.current = near;
-      distanceFromBottom.current = distance;
+      distanceFromBottom.current =
+        el.scrollHeight - el.scrollTop - el.clientHeight;
       setShowJump(!near);
     },
     [setShowJump],
@@ -469,8 +461,6 @@ function AgentTranscriptComponent({
     onResize();
     return () => observer.disconnect();
   }, [scrollerEl, setShowJump, visible]);
-
-  useTurnScrollAnchor(scrollerEl, visible, stickToBottom);
 
   const turns = groupTurns(blocks, managed);
   const firstVisibleTurn = Math.max(0, turns.length - visibleTurnCount);
@@ -782,7 +772,6 @@ function AgentTranscriptComponent({
                 key={item.block.id}
                 block={item.block}
                 layout={transcriptLayout}
-                visible={item.block.role === "user" ? visible : undefined}
                 stickyIndex={firstVisibleTurn + turnIndex + 1}
                 // Prose reads the same wherever it lands: under the fold
                 // line at the top of the turn, or under the work it follows.
@@ -802,7 +791,7 @@ function AgentTranscriptComponent({
                 onOpenPlan={onOpenPlan}
                 onBuildPlan={onBuildPlan}
                 planBusy={!!busy}
-                planHarness={planBuildTargets ? harness : undefined}
+                planHarness={harness}
                 planModel={model}
                 planModelSettings={modelSettings}
                 cwd={cwd}
@@ -1197,7 +1186,7 @@ function TurnMetricsBadge({
   return (
     <div
       ref={root}
-      className="relative shrink-0 ml-[3px]"
+      className="relative shrink-0"
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       onFocus={() => setHovered(true)}
@@ -1413,7 +1402,6 @@ function EditLastTurnButton({
 const TranscriptBlock = memo(function TranscriptBlock({
   block,
   layout,
-  visible,
   stickyIndex,
   underLine = false,
   embedded = false,
@@ -1435,7 +1423,6 @@ const TranscriptBlock = memo(function TranscriptBlock({
 }: {
   block: Block;
   layout: TranscriptLayout;
-  visible?: boolean;
   stickyIndex: number;
   /** True when something already sits directly above this in the turn. */
   underLine?: boolean;
@@ -1462,7 +1449,6 @@ const TranscriptBlock = memo(function TranscriptBlock({
       <UserMessageBlock
         block={block}
         layout={layout}
-        visible={visible ?? true}
         stickyIndex={stickyIndex}
         cwd={cwd}
         onEdit={onEditLastTurn}
@@ -1586,7 +1572,6 @@ const TranscriptBlock = memo(function TranscriptBlock({
 function UserMessageBlock({
   block,
   layout,
-  visible,
   stickyIndex,
   onEdit,
   editing = false,
@@ -1597,7 +1582,6 @@ function UserMessageBlock({
 }: {
   block: Block;
   layout: TranscriptLayout;
-  visible: boolean;
   stickyIndex: number;
   onEdit?: () => void;
   editing?: boolean;
@@ -1656,11 +1640,6 @@ function UserMessageBlock({
         setSingleLine(false);
         return;
       }
-      // Pooled or offscreen turns can measure as zero before they are laid out.
-      if (el.clientWidth === 0) {
-        setSingleLine(false);
-        return;
-      }
       if (!lineHeight) {
         lineHeight = Number.parseFloat(getComputedStyle(el).lineHeight);
       }
@@ -1673,7 +1652,7 @@ function UserMessageBlock({
     const observer = new ResizeObserver(measure);
     observer.observe(el);
     return () => observer.disconnect();
-  }, [text, roundsSingleLine, expanded, visible]);
+  }, [text, roundsSingleLine, expanded]);
 
   const toggle = () => {
     if (overflows) setExpanded((value) => !value);
@@ -1699,7 +1678,7 @@ function UserMessageBlock({
               : "bg-content/10"
           } ${editing ? "edit-last-turn-bubble" : ""} ${
             chat
-              ? `w-fit max-w-[min(100%,36rem)] ${singleLine ? "rounded-full" : "rounded-xl"}`
+              ? `w-fit max-w-xl ${singleLine ? "rounded-full" : "rounded-xl"}`
               : "rounded-lg border border-content/10"
           }`}
           style={{ zIndex: stickyIndex }}
@@ -2072,67 +2051,6 @@ function sameActivity(a: ActivityPhasesProps, b: ActivityPhasesProps): boolean {
 }
 
 /**
- * Hold the reader's place while turns above the viewport change height. An
- * off-screen turn keeps its content-visibility placeholder until it is first
- * laid out, and the scroller opts out of native scroll anchoring, so scrolling
- * up through a freshly opened chat would otherwise shove the view down by
- * each turn's correction.
- */
-function useTurnScrollAnchor(
-  el: HTMLDivElement | null,
-  enabled: boolean,
-  stickToBottom: RefObject<boolean>,
-) {
-  useLayoutEffect(() => {
-    const inner = el?.firstElementChild;
-    if (!enabled || !el || !inner) return;
-    const heights = new WeakMap<Element, number>();
-    const resize = new ResizeObserver((entries) => {
-      // A parked transcript's scroller is detached and measures zero.
-      if (!el.isConnected) return;
-      const viewportTop = el.getBoundingClientRect().top;
-      let shift = 0;
-      for (const entry of entries) {
-        const height =
-          entry.borderBoxSize?.[0]?.blockSize ?? entry.contentRect.height;
-        const previous = heights.get(entry.target);
-        heights.set(entry.target, height);
-        if (previous === undefined || stickToBottom.current) continue;
-        // Only turns that sat wholly above the view. A turn the reader is
-        // looking at grows downward from where they are reading.
-        const top = entry.target.getBoundingClientRect().top;
-        if (top + previous <= viewportTop) shift += height - previous;
-      }
-      if (shift) el.scrollTop += shift;
-    });
-    let observed = new WeakSet<Element>();
-    const observeTurns = () => {
-      for (const turn of inner.children) {
-        if (observed.has(turn) || !turn.classList.contains("transcript-turn"))
-          continue;
-        observed.add(turn);
-        resize.observe(turn);
-      }
-    };
-    const mutations = new MutationObserver((records) => {
-      // Removal is rare (a rewind or edit), so start over rather than hold
-      // detached turns. Re-observed turns report the height already stored.
-      if (records.some((record) => record.removedNodes.length > 0)) {
-        resize.disconnect();
-        observed = new WeakSet();
-      }
-      observeTurns();
-    });
-    mutations.observe(inner, { childList: true });
-    observeTurns();
-    return () => {
-      mutations.disconnect();
-      resize.disconnect();
-    };
-  }, [el, enabled, stickToBottom]);
-}
-
-/**
  * Keep a live phase body on its newest step. Pinning happens in layout
  * before paint so the window follows without a visible hitch; only a real
  * wheel away from the bottom pauses that.
@@ -2164,14 +2082,8 @@ function useLivePhaseScroll(
     const pin = () => {
       if (stickToBottom.current) el.scrollTop = el.scrollHeight;
     };
-    let lastDistance = 0;
     const onScroll = () => {
-      // Only a scroll toward the end re-pins; one leaving it must not.
-      const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
-      if (isNearBottom(el) && distance <= lastDistance) {
-        stickToBottom.current = true;
-      }
-      lastDistance = distance;
+      if (isNearBottom(el)) stickToBottom.current = true;
     };
     const onWheel = (e: WheelEvent) => {
       if (!nestedScrollAbsorbsWheel(el, e.deltaY)) return;
@@ -2725,7 +2637,6 @@ function agentStepBlock(step: AgentStep): Block {
       title: step.text,
       ...(step.toolKind ? { kind: step.toolKind } : {}),
       ...(step.status ? { status: step.status } : {}),
-      ...(step.detail ? { detail: step.detail } : {}),
       ...(step.preview ? { preview: step.preview } : {}),
     },
   };
@@ -2741,14 +2652,7 @@ function subagentStatusLine(block: Block, steps: AgentStep[]): string {
   if (toolCallState(block) === "rejected") return "failed";
   const tools = steps.filter((step) => step.kind === "tool").length;
   if (tools === 0) return "";
-  const count = tools === 1 ? "1 step" : `${tools} steps`;
-  // A step that failed inside a run that went on to finish still has to say so
-  // here, or the row reads clean until someone opens the trail.
-  const failed = steps.filter(
-    (step) => step.kind === "tool" && isFailedStatus(step.status),
-  ).length;
-  if (!failed) return count;
-  return `${count}, ${failed === 1 ? "1 failed" : `${failed} failed`}`;
+  return tools === 1 ? "1 step" : `${tools} steps`;
 }
 
 /** Whether the line that titled a group has more in it than the header shows. */
@@ -3093,7 +2997,11 @@ function ActivityToolRow({
   const appCall = monoCodeToolCall(block);
   if (appCall) {
     return (
-      <MonoCodeCallRow block={block} call={appCall} onApproval={onApproval} />
+      <MonoCodeCallRow
+        block={block}
+        call={appCall}
+        onApproval={onApproval}
+      />
     );
   }
   const label = toolCallLabel(block, cwd);
@@ -3181,8 +3089,7 @@ function MonoCodeCallRow({
   onApproval?: (requestId: number, decision: ApprovalDecision) => void;
 }) {
   const state = toolCallState(block);
-  const output =
-    block.tool?.detail?.trim() || block.tool?.preview?.output?.trim();
+  const output = block.tool?.detail?.trim() || block.tool?.preview?.output?.trim();
   const [errorOpen, setErrorOpen] = useState(false);
   const hasError = state === "rejected" && !!output;
   const pendingApproval = needsApproval(block);
@@ -3228,7 +3135,9 @@ function MonoCodeCallRow({
           {summary}
         </button>
       ) : (
-        <div className="flex min-w-0 items-center gap-1.5 py-1">{summary}</div>
+        <div className="flex min-w-0 items-center gap-1.5 py-1">
+          {summary}
+        </div>
       )}
       {errorOpen && hasError ? (
         <pre className="min-w-0 whitespace-pre-wrap break-words py-1 pl-5 font-mono text-[12px] leading-5 text-red-400/80">
@@ -3382,7 +3291,11 @@ function ToolCall({
   if (appCall) {
     return (
       <div className={frame}>
-        <MonoCodeCallRow block={block} call={appCall} onApproval={onApproval} />
+        <MonoCodeCallRow
+          block={block}
+          call={appCall}
+          onApproval={onApproval}
+        />
       </div>
     );
   }

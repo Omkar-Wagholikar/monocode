@@ -97,9 +97,7 @@ async function promptOnLive(input: {
   signal?: AbortSignal;
   onEvent?: (event: HarnessEvent) => void;
 }): Promise<string> {
-  input.signal?.throwIfAborted();
   const session = await ensureLive(input.cwd, input.model, input.modelSettings);
-  input.signal?.throwIfAborted();
   session.onEvent = input.onEvent;
   const abort = abortTextPromptRace(input.signal, () =>
     session.client.abortSession(session.sessionId),

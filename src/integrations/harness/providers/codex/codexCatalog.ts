@@ -47,14 +47,11 @@ export function refreshCodexCatalog(): Promise<void> {
   return inflight;
 }
 
-export async function discoverCodexModels(
-  workingDirectory?: string,
-): Promise<AgentModel[]> {
+async function discoverCodexModels(): Promise<AgentModel[]> {
   const { path } = await resolveCodexBinary();
-  const cwd = workingDirectory ?? (await homeDir());
-  const probeId = `${PROBE_ID}-${crypto.randomUUID()}`;
+  const cwd = await homeDir();
   const rpc = new JsonRpcClient(
-    probeId,
+    PROBE_ID,
     {
       onRequest: (id) => {
         void rpc.respond(id, {}).catch(() => undefined);
@@ -65,54 +62,50 @@ export async function discoverCodexModels(
 
   const stop = async () => {
     rpc.close();
-    unwatchChild(probeId);
-    await killChild(probeId).catch(() => undefined);
+    unwatchChild(PROBE_ID);
+    await killChild(PROBE_ID).catch(() => undefined);
   };
 
   watchChild(
-    probeId,
+    PROBE_ID,
     (line) => rpc.pushLine(line),
     () => rpc.close(new Error("Codex probe exited")),
   );
 
   try {
-    await spawnChild(probeId, path, ["app-server"], cwd, undefined, "codex");
-    return await withTimeout(
-      DISCOVERY_TIMEOUT_MS,
-      async () => {
-        await rpc.request(
-          "initialize",
-          {
-            clientInfo: {
-              name: "monocode",
-              title: "MonoCode",
-              version: "0.1.0",
-            },
-            capabilities: { experimentalApi: true },
+    await spawnChild(PROBE_ID, path, ["app-server"], cwd, undefined, "codex");
+    return await withTimeout(DISCOVERY_TIMEOUT_MS, async () => {
+      await rpc.request(
+        "initialize",
+        {
+          clientInfo: {
+            name: "monocode",
+            title: "MonoCode",
+            version: "0.1.0",
           },
-          REQUEST_TIMEOUT_MS,
+          capabilities: { experimentalApi: true },
+        },
+        REQUEST_TIMEOUT_MS,
+      );
+      await rpc.notify("initialized", undefined);
+
+      const account = await rpc
+        .request<{
+          account?: unknown;
+          requiresOpenaiAuth?: boolean;
+        }>("account/read", {}, REQUEST_TIMEOUT_MS)
+        .catch(() => null);
+
+      if (account && !account.account && account.requiresOpenaiAuth) {
+        throw new Error(
+          "Codex CLI is not authenticated. Run `codex login` and try again.",
         );
-        await rpc.notify("initialized", undefined);
+      }
 
-        const account = await rpc
-          .request<{
-            account?: unknown;
-            requiresOpenaiAuth?: boolean;
-          }>("account/read", {}, REQUEST_TIMEOUT_MS)
-          .catch(() => null);
-
-        if (account && !account.account && account.requiresOpenaiAuth) {
-          throw new Error(
-            "Codex CLI is not authenticated. Run `codex login` and try again.",
-          );
-        }
-
-        return await listAllModels(rpc);
-      },
-      () => {
-        void stop();
-      },
-    );
+      return await listAllModels(rpc);
+    }, () => {
+      void stop();
+    });
   } finally {
     await stop();
   }
@@ -141,12 +134,10 @@ async function listAllModels(rpc: JsonRpcClient): Promise<AgentModel[]> {
 
 export function parseCodexModelList(data: unknown[]): AgentModel[] {
   return orderDefaultFirst(
-    uniqueByNative(
-      data.flatMap((row) => {
-        const model = parseModel(row);
-        return model ? [model] : [];
-      }),
-    ),
+    uniqueByNative(data.flatMap((row) => {
+      const model = parseModel(row);
+      return model ? [model] : [];
+    })),
     data,
   );
 }
@@ -161,7 +152,9 @@ function parseModel(raw: unknown): AgentModel | null {
     stringField(rec, "id");
   if (!nativeId) return null;
   const name = formatDisplayName(
-    stringField(rec, "displayName") ?? stringField(rec, "name") ?? nativeId,
+    stringField(rec, "displayName") ??
+      stringField(rec, "name") ??
+      nativeId,
   );
   const settings = parseModelSettings(rec);
   return {
@@ -189,7 +182,8 @@ function parseModelSettings(rec: Record<string, unknown>): ModelSetting[] {
       continue;
     }
     const row = asRecord(entry);
-    const value = stringField(row, "reasoningEffort") ?? stringField(row, "id");
+    const value =
+      stringField(row, "reasoningEffort") ?? stringField(row, "id");
     if (!value) continue;
     effortOptions.push({
       value,
@@ -235,7 +229,8 @@ function parseModelSettings(rec: Record<string, unknown>): ModelSetting[] {
     });
   }
   if (tierOptions.length > 1) {
-    const defaultTier = stringField(rec, "defaultServiceTier") ?? "default";
+    const defaultTier =
+      stringField(rec, "defaultServiceTier") ?? "default";
     settings.push({
       id: "serviceTier",
       label: "Service Tier",

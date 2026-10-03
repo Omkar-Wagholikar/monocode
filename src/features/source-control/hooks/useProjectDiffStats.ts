@@ -8,14 +8,11 @@ type Entry = {
   inFlight: boolean;
   pending: boolean;
   epoch: number;
-  loadedAt: number;
   unsubscribeGit: (() => void) | null;
   onResume: (() => void) | null;
-  onGitChanged: (() => void) | null;
 };
 
 const entries = new Map<string, Entry>();
-const RESUME_TTL_MS = 30_000;
 
 function entryFor(cwd: string): Entry {
   const existing = entries.get(cwd);
@@ -27,10 +24,8 @@ function entryFor(cwd: string): Entry {
     inFlight: false,
     pending: false,
     epoch: 0,
-    loadedAt: 0,
     unsubscribeGit: null,
     onResume: null,
-    onGitChanged: null,
   };
   entries.set(cwd, entry);
   return entry;
@@ -58,15 +53,9 @@ async function load(entry: Entry, force = false) {
   const epoch = entry.epoch;
   try {
     const stats = await gitDiffStats(entry.cwd);
-    if (epoch === entry.epoch) {
-      entry.loadedAt = Date.now();
-      publish(entry, stats);
-    }
+    if (epoch === entry.epoch) publish(entry, stats);
   } catch {
-    if (epoch === entry.epoch) {
-      entry.loadedAt = Date.now();
-      publish(entry, null);
-    }
+    if (epoch === entry.epoch) publish(entry, null);
   } finally {
     entry.inFlight = false;
     if (entry.pending) {
@@ -81,28 +70,18 @@ export function applyProjectDiffStats(cwd: string, stats: GitDiffStats) {
   if (!cwd || cwd === "~") return;
   const entry = entryFor(cwd);
   entry.epoch += 1;
-  entry.loadedAt = Date.now();
   publish(entry, stats);
 }
 
 function start(entry: Entry) {
   if (entry.onResume) return;
-  if (!entry.inFlight && Date.now() - entry.loadedAt >= RESUME_TTL_MS) {
-    void load(entry, true);
-  }
+  void load(entry, true);
   entry.onResume = () => {
-    if (
-      !document.hidden &&
-      !entry.inFlight &&
-      Date.now() - entry.loadedAt >= RESUME_TTL_MS
-    ) {
-      void load(entry, true);
-    }
+    if (!document.hidden) void load(entry, true);
   };
-  entry.onGitChanged = () => void load(entry, true);
   window.addEventListener("focus", entry.onResume);
   document.addEventListener("visibilitychange", entry.onResume);
-  entry.unsubscribeGit = subscribeGitChanged(entry.onGitChanged);
+  entry.unsubscribeGit = subscribeGitChanged(entry.onResume);
 }
 
 function stop(entry: Entry) {
@@ -112,7 +91,6 @@ function stop(entry: Entry) {
   }
   entry.unsubscribeGit?.();
   entry.onResume = null;
-  entry.onGitChanged = null;
   entry.unsubscribeGit = null;
 }
 

@@ -1,7 +1,4 @@
-import {
-  gitRangeContext,
-  gitStagedContext,
-} from "../../../../platform/tauri/fs";
+import { gitRangeContext, gitStagedContext } from "../../../../platform/tauri/fs";
 import {
   buildBranchNamePrompt,
   buildCommitMessagePrompt,
@@ -20,13 +17,8 @@ export function stopCursorGitText(): Promise<void> {
   return stopCursorTextPrompt();
 }
 
-export async function generateCursorCommitMessage(
-  cwd: string,
-  signal?: AbortSignal,
-): Promise<string> {
-  signal?.throwIfAborted();
+export async function generateCursorCommitMessage(cwd: string): Promise<string> {
   const context = await gitStagedContext(cwd);
-  signal?.throwIfAborted();
   const output = await runCursorTextPrompt({
     cwd,
     prompt: buildCommitMessagePrompt({
@@ -35,7 +27,6 @@ export async function generateCursorCommitMessage(
       stagedPatch: context.patch,
     }),
     timeoutMs: GIT_TIMEOUT_MS,
-    signal,
   });
   const parsed = parseCommitMessage(output);
   if (parsed) return formatCommitMessage(parsed);

@@ -3,7 +3,7 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { projectFiles, remoteFiles, loadProjectFiles, rankProjectFiles } = vi.hoisted(() => {
+const { projectFiles, rankProjectFiles } = vi.hoisted(() => {
   const projectFiles = [
     {
       path: "/repo/src/App.tsx",
@@ -11,21 +11,12 @@ const { projectFiles, remoteFiles, loadProjectFiles, rankProjectFiles } = vi.hoi
       name: "App.tsx",
     },
   ];
-  const remoteFiles = [{
-    path: "remote://env/home/me/repo/src/App.tsx",
-    relative: "src/App.tsx",
-    name: "App.tsx",
-  }];
   return {
     projectFiles,
-    remoteFiles,
-    loadProjectFiles: vi.fn((cwd: string) =>
-      cwd.startsWith("remote://") ? Promise.resolve(remoteFiles) : new Promise(() => {}),
-    ),
     rankProjectFiles: vi.fn((_files: unknown[], query: string) =>
       query.trim() && !query.toLowerCase().includes("app")
         ? []
-        : (_files as typeof projectFiles).map((file) => ({
+        : projectFiles.map((file) => ({
             ...file,
             score: 1,
             positions: [],
@@ -35,15 +26,14 @@ const { projectFiles, remoteFiles, loadProjectFiles, rankProjectFiles } = vi.hoi
 });
 
 vi.mock("../model/fileIndex", () => ({
-  loadProjectFiles,
-  peekProjectFiles: vi.fn((cwd: string) => cwd.startsWith("remote://") ? null : projectFiles),
+  loadProjectFiles: vi.fn(() => new Promise(() => {})),
+  peekProjectFiles: vi.fn(() => projectFiles),
   rankProjectFiles,
   recentOpenedFiles: vi.fn(() => []),
-  rememberOpenedFile: vi.fn(),
 }));
 
 vi.mock("../../projects/model/recents", () => ({
-  looksLikeProject: (path: string) => path !== "~",
+  looksLikeProject: () => true,
 }));
 
 import { FilePicker, reloadActionHint } from "./FilePicker";
@@ -184,48 +174,4 @@ describe("file picker command mode", () => {
       expect(callbacks.onOpenFile).not.toHaveBeenCalled();
     },
   );
-});
-
-describe("file picker on a remote project", () => {
-  const cwd = "remote://env/home/me/repo";
-
-  it("uses the shared file list and opens its remote path", async () => {
-    const onOpenFile = vi.fn();
-    const onClose = vi.fn();
-    await act(async () =>
-      root.render(
-        createElement(FilePicker, {
-          open: true,
-          cwd,
-          initialQuery: "app",
-          onOpenFile,
-          onRunAction: vi.fn(),
-          onClose,
-        }),
-      ),
-    );
-    const dialog = document.querySelector<HTMLElement>("[data-file-picker]")!;
-    expect(loadProjectFiles).toHaveBeenCalledWith(cwd, true);
-    expect(dialog.textContent).toContain("App.tsx");
-
-    press(dialog.querySelector<HTMLInputElement>("input")!, "Enter");
-    expect(onOpenFile).toHaveBeenCalledExactlyOnceWith(remoteFiles[0].path, undefined, { exact: true });
-    expect(onClose).toHaveBeenCalledOnce();
-  });
-
-  it("shows a connection error from the shared file list", async () => {
-    loadProjectFiles.mockRejectedValueOnce(new Error("Machine is not connected"));
-    await act(async () =>
-      root.render(
-        createElement(FilePicker, {
-          open: true,
-          cwd,
-          onOpenFile: vi.fn(),
-          onRunAction: vi.fn(),
-          onClose: vi.fn(),
-        }),
-      ),
-    );
-    expect(document.body.textContent).toContain("Machine is not connected");
-  });
 });

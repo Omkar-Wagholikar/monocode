@@ -2,7 +2,6 @@ import { modelContextWindow, nativeModelId } from "../../../../features/sessions
 import type { RuntimeMode, TurnMetrics } from "../../../../features/sessions/model/session";
 import { taskListFromToolInput } from "../../../../features/sessions/model/taskList";
 import {
-  closeHarnessSse,
   execChild,
   freeHarnessPort,
   killChild,
@@ -329,10 +328,6 @@ export async function stopOpenCodeSession(sessionId: string): Promise<void> {
     live.turnFailed = null;
     await live.client.abortSession(live.openCodeSessionId);
     await live.client.closeEvents(sessionId);
-  } else {
-    // A stream or server that ended on its own already dropped `live`, but
-    // its SSE handlers still hold it until the stream is closed.
-    await closeHarnessSse(sessionId).catch(() => undefined);
   }
   unwatchChild(sessionId);
   await killChild(sessionId).catch(() => undefined);
@@ -1122,7 +1117,6 @@ function emitSubagentStep(
     }) ||
     (typeof state.title === "string" && state.title) ||
     tool;
-  const failed = status === "error";
   live.onEvent({
     type: "agent.step",
     callId,
@@ -1130,13 +1124,12 @@ function emitSubagentStep(
     kind: "tool",
     text: title,
     toolKind: kind,
-    status: failed
-      ? "failed"
-      : status === "completed"
-        ? "completed"
-        : "in_progress",
-    // Only a failure earns detail; a preview's output is never shown here.
-    ...(failed ? { detail: detailFromToolPart(part) } : {}),
+    status:
+      status === "error"
+        ? "failed"
+        : status === "completed"
+          ? "completed"
+          : "in_progress",
     ...(preview ? { preview } : {}),
   });
   if (kind === "agent") trackSubagentRow(live, callId, part);

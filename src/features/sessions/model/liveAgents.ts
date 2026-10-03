@@ -20,14 +20,6 @@ export type LiveAgent = {
   done: boolean;
 };
 
-/** Inbox discussions and orchestration workers have their own panels and
- * never appear as live agents. */
-export function isLiveAgentSession(
-  session: Pick<Session, "inboxAsk" | "orchestrationLeadId">,
-): boolean {
-  return !session.inboxAsk && !session.orchestrationLeadId;
-}
-
 export function liveAgentsFromSessions(
   sessions: Session[],
   unseenFinishedIds: ReadonlySet<string> = new Set(),
@@ -35,7 +27,7 @@ export function liveAgentsFromSessions(
   return sessions
     .filter(
       (session) =>
-        isLiveAgentSession(session) && (isInFlightSession(session) || unseenFinishedIds.has(session.id)),
+        !session.inboxAsk && !session.orchestrationLeadId && (isInFlightSession(session) || unseenFinishedIds.has(session.id)),
     )
     .map((session) =>
       toLiveAgent(session, unseenFinishedIds.has(session.id)),

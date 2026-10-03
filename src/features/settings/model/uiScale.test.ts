@@ -4,7 +4,6 @@ import {
   UI_SCALE_DEFAULT,
   UI_SCALE_MAX,
   UI_SCALE_MIN,
-  UI_SCALE_PERCENTS,
   uiScaleCommand,
   zoomInUiScale,
   zoomOutUiScale,
@@ -43,12 +42,5 @@ describe("ui scale", () => {
     expect(uiScaleCommand({ key: "0", code: "Digit0" })).toBe("zoom-reset");
     expect(uiScaleCommand({ key: "0", code: "Numpad0" })).toBe("zoom-reset");
     expect(uiScaleCommand({ key: "p", code: "KeyP" })).toBeNull();
-  });
-
-  it("lists every supported percent step", () => {
-    expect(UI_SCALE_PERCENTS[0]).toBe(Math.round(UI_SCALE_MIN * 100));
-    expect(UI_SCALE_PERCENTS).toContain(Math.round(UI_SCALE_DEFAULT * 100));
-    expect(UI_SCALE_PERCENTS.at(-1)).toBe(Math.round(UI_SCALE_MAX * 100));
-    expect(UI_SCALE_PERCENTS).toHaveLength(16);
   });
 });

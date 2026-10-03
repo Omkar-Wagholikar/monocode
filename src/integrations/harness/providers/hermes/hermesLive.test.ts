@@ -22,7 +22,10 @@ vi.mock("../../core/child", () => ({
   writeChild: async (_id: string, line: string) => {
     sent.push(line);
   },
-  readHarnessTextFile: async (path: string) => {
+}));
+
+vi.mock("../../../../platform/tauri/fs", () => ({
+  readTextFile: async (path: string) => {
     const content = textFiles.get(path);
     if (content == null) throw new Error(`missing ${path}`);
     return content;

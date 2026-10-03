@@ -55,8 +55,6 @@ export type QuickLaunch = {
   prompt: string;
   /** Create an unsent user draft instead of starting an agent turn. */
   draft?: boolean;
-  /** Turn mode picked with a leading composer command. */
-  intent?: "plan" | "orchestrate";
   cwd: string;
   harness: HarnessId;
   /** Missing means the harness default, resolved by the workspace. */

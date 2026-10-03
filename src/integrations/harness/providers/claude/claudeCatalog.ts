@@ -233,26 +233,19 @@ export function refreshClaudeCatalog(): Promise<void> {
   return inflight;
 }
 
-export async function discoverClaudeModels(
-  workingDirectory?: string,
-): Promise<AgentModel[]> {
-  const listed = await discoverViaListModels(workingDirectory).catch(
-    (error: unknown) => {
-      console.debug("[monocode] claude list_models catalog failed", error);
-      return [];
-    },
-  );
+async function discoverClaudeModels(): Promise<AgentModel[]> {
+  const listed = await discoverViaListModels().catch((error: unknown) => {
+    console.debug("[monocode] claude list_models catalog failed", error);
+    return [];
+  });
   if (listed.length > 0) return listed;
-  return discoverViaVersion(workingDirectory);
+  return discoverViaVersion();
 }
 
-async function discoverViaListModels(
-  workingDirectory?: string,
-): Promise<AgentModel[]> {
+async function discoverViaListModels(): Promise<AgentModel[]> {
   const { path } = await resolveClaudeBinary();
-  const cwd = workingDirectory ?? (await homeDir());
+  const cwd = await homeDir();
   const sessionId = crypto.randomUUID();
-  const probeId = `${PROBE_ID}-${sessionId}`;
 
   let listed: ((models: AgentModel[]) => void) | null = null;
   let failed: ((error: Error) => void) | null = null;
@@ -266,7 +259,7 @@ async function discoverViaListModels(
     if (asked) return;
     asked = true;
     void writeChild(
-      probeId,
+      PROBE_ID,
       JSON.stringify(
         buildControlRequest(LIST_MODELS_REQUEST_ID, { subtype: "list_models" }),
       ),
@@ -276,12 +269,12 @@ async function discoverViaListModels(
   };
 
   const stop = async () => {
-    unwatchChild(probeId);
-    await killChild(probeId).catch(() => undefined);
+    unwatchChild(PROBE_ID);
+    await killChild(PROBE_ID).catch(() => undefined);
   };
 
   watchChild(
-    probeId,
+    PROBE_ID,
     (line) => {
       const rec = parseJsonLine(line);
       if (!rec) return;
@@ -296,7 +289,7 @@ async function discoverViaListModels(
 
   try {
     await spawnChild(
-      probeId,
+      PROBE_ID,
       path,
       buildClaudeSpawnArgs({ isolated: true, sessionId }),
       cwd,
@@ -304,7 +297,7 @@ async function discoverViaListModels(
       "claude",
     );
     await writeChild(
-      probeId,
+      PROBE_ID,
       JSON.stringify(
         buildControlRequest(INIT_REQUEST_ID, { subtype: "initialize" }),
       ),
@@ -317,11 +310,9 @@ async function discoverViaListModels(
   }
 }
 
-async function discoverViaVersion(
-  workingDirectory?: string,
-): Promise<AgentModel[]> {
+async function discoverViaVersion(): Promise<AgentModel[]> {
   const { path } = await resolveClaudeBinary();
-  const cwd = workingDirectory ?? (await homeDir());
+  const cwd = await homeDir();
   const versionOut = await execChild(path, ["--version"], cwd, "claude");
   const version = parseClaudeVersion(versionOut);
   return modelsForClaudeVersion(version);
@@ -378,10 +369,7 @@ function modelFromListRow(raw: unknown): AgentModel | null {
   const displayName = stringField(rec, "displayName") ?? "";
   const description = stringField(rec, "description") ?? "";
   const name = pickerName(displayName, description, nativeId, fromResolved.id);
-  const settings = settingsFromListRow(
-    rec,
-    fromValue.context1m || fromResolved.context1m,
-  );
+  const settings = settingsFromListRow(rec, fromValue.context1m || fromResolved.context1m);
 
   return {
     id: claudeCatalogId(nativeId),
@@ -411,17 +399,14 @@ function settingsFromListRow(
 function advertisedEffortLevels(rec: Record<string, unknown>): string[] {
   const raw = rec.supportedEffortLevels;
   if (!Array.isArray(raw)) return [];
-  return raw.filter(
-    (level): level is string =>
-      typeof level === "string" && level.trim() !== "",
-  );
+  return raw.filter((level): level is string => typeof level === "string" && level.trim() !== "");
 }
 
 function effortSetting(levels: string[]): ModelSetting {
   const known = levels.filter((level) => EFFORT_LABELS[level]);
-  const options = (
-    known.length > 0 ? known : ["low", "medium", "high", "max"]
-  ).map((value) => ({ value, label: EFFORT_LABELS[value] ?? value }));
+  const options = (known.length > 0 ? known : ["low", "medium", "high", "max"]).map(
+    (value) => ({ value, label: EFFORT_LABELS[value] ?? value }),
+  );
   if (options.some((option) => option.value === "xhigh")) {
     options.push({ value: "ultracode", label: "Ultracode" });
   }
@@ -499,9 +484,7 @@ function resolvedClaudeModelName(
 
   const family = parts
     .slice(0, versionStart)
-    .map(
-      (part) => `${part[0]?.toUpperCase() ?? ""}${part.slice(1).toLowerCase()}`,
-    )
+    .map((part) => `${part[0]?.toUpperCase() ?? ""}${part.slice(1).toLowerCase()}`)
     .join(" ");
   return { family, version: version.join(".") };
 }
@@ -510,19 +493,14 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function splitClaudeModelValue(value: string): {
-  id: string;
-  context1m: boolean;
-} {
+function splitClaudeModelValue(value: string): { id: string; context1m: boolean } {
   const match = /^(.*)\[1m\]$/i.exec(value.trim());
   if (match?.[1]?.trim()) return { id: match[1].trim(), context1m: true };
   return { id: value.trim(), context1m: false };
 }
 
 function claudeCatalogId(nativeId: string): string {
-  const slug = nativeId.startsWith("claude-")
-    ? nativeId.slice("claude-".length)
-    : nativeId;
+  const slug = nativeId.startsWith("claude-") ? nativeId.slice("claude-".length) : nativeId;
   return `claude:${slug}`;
 }
 

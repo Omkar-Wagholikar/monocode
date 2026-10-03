@@ -46,7 +46,6 @@ import {
   subscribeDirsChanged,
 } from "../model/fileTree";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
-import { REMOTE_PATH_PREFIX } from "../../../shared/lib/remotePaths";
 import { dragPointToClient } from "../../../shared/lib/dragPoint";
 import {
   basename,
@@ -823,14 +822,6 @@ export const FileTree = memo(function FileTree({
   }, []);
 
   useEffect(() => {
-    if (!cwd.startsWith(REMOTE_PATH_PREFIX)) return;
-    const timer = window.setInterval(() => {
-      if (!document.hidden) notifyDirsChanged();
-    }, 5000);
-    return () => window.clearInterval(timer);
-  }, [cwd]);
-
-  useEffect(() => {
     const hit = peekDir(cwd);
     if (hit) {
       setChildren(hit);
@@ -1218,7 +1209,7 @@ function TreeNode({ entry, depth }: { entry: FsEntry; depth: number }) {
   );
 }
 
-export function NameRow({
+function NameRow({
   depth,
   isDir,
   initial = "",

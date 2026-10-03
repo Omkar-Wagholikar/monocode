@@ -8,10 +8,7 @@ import {
   unwatchChild,
   watchChild,
 } from "../../core/child";
-import {
-  antigravitySpawnCwd,
-  modelsFromSessionNew,
-} from "./antigravityProtocol";
+import { antigravitySpawnCwd, modelsFromSessionNew } from "./antigravityProtocol";
 
 const PROBE_ID = "monocode-antigravity-probe";
 const REQUEST_TIMEOUT_MS = 12_000;
@@ -19,7 +16,7 @@ let inflight: Promise<void> | null = null;
 
 export function refreshAntigravityCatalog(): Promise<void> {
   if (inflight) return inflight;
-  inflight = discoverAntigravityModels()
+  inflight = discoverModels()
     .then((models) => {
       if (models.length > 0) setHarnessModels("antigravity", models);
     })
@@ -33,30 +30,25 @@ export function refreshAntigravityCatalog(): Promise<void> {
   return inflight;
 }
 
-export async function discoverAntigravityModels(workingDirectory?: string) {
+async function discoverModels() {
   const { path, args } = await resolveAntigravityBinary();
-  const cwd = workingDirectory ?? (await homeDir());
-  const probeId = `${PROBE_ID}-${crypto.randomUUID()}`;
-  const acp = new AcpClient(probeId, {
+  const cwd = await homeDir();
+  const acp = new AcpClient(PROBE_ID, {
     onRequest: (id, method) => {
-      const response =
-        method === "session/request_permission"
-          ? acp.respond(id, { outcome: { outcome: "cancelled" } })
-          : acp.respondError(id, {
-              code: -32601,
-              message: `Method not found: ${method}`,
-            });
+      const response = method === "session/request_permission"
+        ? acp.respond(id, { outcome: { outcome: "cancelled" } })
+        : acp.respondError(id, { code: -32601, message: `Method not found: ${method}` });
       void response.catch(() => undefined);
     },
   });
   watchChild(
-    probeId,
+    PROBE_ID,
     (line) => acp.pushLine(line),
     () => acp.close(new Error("Antigravity probe exited")),
   );
   try {
     await spawnChild(
-      probeId,
+      PROBE_ID,
       path,
       args,
       antigravitySpawnCwd(path, cwd),
@@ -87,7 +79,7 @@ export async function discoverAntigravityModels(workingDirectory?: string) {
     return modelsFromSessionNew(created);
   } finally {
     acp.close();
-    unwatchChild(probeId);
-    await killChild(probeId).catch(() => undefined);
+    unwatchChild(PROBE_ID);
+    await killChild(PROBE_ID).catch(() => undefined);
   }
 }

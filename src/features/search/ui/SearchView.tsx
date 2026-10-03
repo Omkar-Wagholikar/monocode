@@ -37,7 +37,7 @@ import {
 } from "../../files/model/fileIndex";
 import { prettyCwd, projectName } from "../../../shared/lib/paths";
 import { IS_MAC } from "../../../platform/tauri/platform";
-import { isLocalProject, type RecentProject } from "../../projects/model/recents";
+import { looksLikeProject, type RecentProject } from "../../projects/model/recents";
 import {
   cancelProjectSearch,
   searchProject,
@@ -142,7 +142,7 @@ export function SearchView({
 
   useEffect(() => {
     if (!open) return;
-    if (!isLocalProject(cwd)) {
+    if (!looksLikeProject(cwd)) {
       setFiles([]);
       return;
     }
@@ -163,7 +163,7 @@ export function SearchView({
   );
   const fileHits = useMemo(
     () =>
-      trimmed && isLocalProject(cwd)
+      trimmed && looksLikeProject(cwd)
         ? hitsFromFileRanks(
             rankProjectFiles(files, trimmed, recentOpenedFiles(cwd), 40),
           )
@@ -240,7 +240,7 @@ export function SearchView({
         setSessionTruncated(false);
       }
 
-      if (wantFiles && isLocalProject(cwd)) {
+      if (wantFiles && looksLikeProject(cwd)) {
         const searchId = crypto.randomUUID();
         activeProjectSearchId.current = searchId;
         setLoading(true);
@@ -288,7 +288,7 @@ export function SearchView({
       }
       const searchId = activeProjectSearchId.current;
       activeProjectSearchId.current = null;
-      if (searchId && isLocalProject(cwd)) {
+      if (searchId && looksLikeProject(cwd)) {
         void cancelProjectSearch(cwd, searchId).catch(() => undefined);
       }
     };

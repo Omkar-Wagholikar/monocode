@@ -1,7 +1,4 @@
-import {
-  gitRangeContext,
-  gitStagedContext,
-} from "../../../../platform/tauri/fs";
+import { gitRangeContext, gitStagedContext } from "../../../../platform/tauri/fs";
 import {
   buildBranchNamePrompt,
   buildCommitMessagePrompt,
@@ -16,13 +13,8 @@ import { runClaudeTextPrompt } from "./claudeText";
 
 const GIT_TIMEOUT_MS = 90_000;
 
-export async function generateClaudeCommitMessage(
-  cwd: string,
-  signal?: AbortSignal,
-): Promise<string> {
-  signal?.throwIfAborted();
+export async function generateClaudeCommitMessage(cwd: string): Promise<string> {
   const context = await gitStagedContext(cwd);
-  signal?.throwIfAborted();
   const output = await runClaudeTextPrompt({
     cwd,
     prompt: buildCommitMessagePrompt({
@@ -31,7 +23,6 @@ export async function generateClaudeCommitMessage(
       stagedPatch: context.patch,
     }),
     timeoutMs: GIT_TIMEOUT_MS,
-    signal,
   });
   const parsed = parseCommitMessage(output);
   if (parsed) return formatCommitMessage(parsed);

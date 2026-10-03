@@ -266,7 +266,8 @@ export function isAgentToolName(name: string): boolean {
   return (
     normalized === "agent" ||
     normalized === "task" ||
-    normalized === "subagent"
+    normalized === "subagent" ||
+    normalized === "taskcreate"
   );
 }
 

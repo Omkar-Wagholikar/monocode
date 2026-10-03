@@ -44,13 +44,13 @@ export function refreshGrokCatalog(): Promise<void> {
   return inflight;
 }
 
-export async function discoverGrokModels(workingDirectory?: string) {
-  const fromAcp = await discoverViaAcp(workingDirectory).catch((error: unknown) => {
+async function discoverGrokModels() {
+  const fromAcp = await discoverViaAcp().catch((error: unknown) => {
     console.debug("[monocode] grok ACP catalog failed", error);
     return [];
   });
   if (fromAcp.length > 0) return fromAcp;
-  const fromCli = await discoverViaCli(workingDirectory).catch((error: unknown) => {
+  const fromCli = await discoverViaCli().catch((error: unknown) => {
     console.debug("[monocode] grok CLI catalog failed", error);
     return [];
   });
@@ -58,11 +58,10 @@ export async function discoverGrokModels(workingDirectory?: string) {
   return fallbackGrokModels();
 }
 
-async function discoverViaAcp(workingDirectory?: string) {
+async function discoverViaAcp() {
   const { path } = await resolveGrokBinary();
-  const cwd = workingDirectory ?? (await homeDir());
-  const probeId = `${PROBE_ID}-${crypto.randomUUID()}`;
-  const acp = new AcpClient(probeId, {
+  const cwd = await homeDir();
+  const acp = new AcpClient(PROBE_ID, {
     onRequest: (id) => {
       void acp.respond(id, {}).catch(() => undefined);
     },
@@ -70,19 +69,19 @@ async function discoverViaAcp(workingDirectory?: string) {
 
   const stop = async () => {
     acp.close();
-    unwatchChild(probeId);
-    await killChild(probeId).catch(() => undefined);
+    unwatchChild(PROBE_ID);
+    await killChild(PROBE_ID).catch(() => undefined);
   };
 
   watchChild(
-    probeId,
+    PROBE_ID,
     (line) => acp.pushLine(line),
     () => acp.close(new Error("Grok Build probe exited")),
   );
 
   try {
     await spawnChild(
-      probeId,
+      PROBE_ID,
       path,
       grokSpawnArgs({ model: "" }),
       cwd,
@@ -126,9 +125,9 @@ async function discoverViaAcp(workingDirectory?: string) {
   }
 }
 
-async function discoverViaCli(workingDirectory?: string) {
+async function discoverViaCli() {
   const { path } = await resolveGrokBinary();
-  const cwd = workingDirectory ?? (await homeDir());
+  const cwd = await homeDir();
   const stdout = await execChild(path, ["models"], cwd, "grok");
   return modelsFromGrokModelsOutput(stdout);
 }

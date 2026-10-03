@@ -9,7 +9,7 @@ vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn().mockResolvedValue(undefined),
 }));
 
-type Picker = "model" | "project" | "commands" | null;
+type Picker = "model" | "project" | null;
 let root: Root;
 let container: HTMLDivElement;
 let notifyResize: () => void;
@@ -67,9 +67,7 @@ beforeEach(() => {
           ? 400
           : this.dataset.picker === "project"
             ? 180
-            : this.dataset.picker === "commands"
-              ? 60
-              : 0;
+            : 0;
       return {
         height: this.hasAttribute("data-frame")
           ? (sampledHeight ?? 100 + panelHeight)
@@ -97,7 +95,7 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-it.each(["model", "project", "commands"] as const)(
+it.each(["model", "project"] as const)(
   "expands and fades the %s picker while resizing the native window",
   (picker) => {
     render(null);
@@ -105,10 +103,7 @@ it.each(["model", "project", "commands"] as const)(
     render(picker);
     expect(animate.mock.calls[0][0]).toEqual([
       { height: "100px" },
-      {
-        height:
-          picker === "model" ? "500px" : picker === "project" ? "280px" : "160px",
-      },
+      { height: picker === "model" ? "500px" : "280px" },
     ]);
     expect(animate.mock.calls[1][0]).toEqual([{ opacity: 0 }, { opacity: 1 }]);
     sampledHeight = 220;

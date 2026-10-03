@@ -27,12 +27,7 @@ import {
 } from "../../projects/model/projectTerminal";
 import { MOD } from "../../../platform/tauri/platform";
 import type { TerminalMetaPatch } from "../model/terminalTab";
-import { lazySurface } from "../../../shared/ui/lazySurface";
-
-const TerminalView = lazySurface(async () => {
-  const module = await import("./TerminalView");
-  return { default: module.TerminalView };
-});
+import { TerminalView } from "./TerminalView";
 
 type Props = {
   dock: ProjectTerminalDock;

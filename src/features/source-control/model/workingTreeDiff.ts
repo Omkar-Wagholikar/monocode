@@ -13,17 +13,12 @@ export function workingTreeDiffEntryId(
   return `${kind}:${relative}`;
 }
 
-/**
- * Staged entries come first, matching the source-control sidebar. `scope`
- * keeps only that side, for a review opened from one sidebar section.
- */
+/** Staged entries come first, matching the source-control sidebar. */
 export function workingTreeDiffEntries(
   files: readonly GitChangedFile[],
-  scope?: GitFileDiffKind,
 ): WorkingTreeDiffEntry[] {
   const entries: WorkingTreeDiffEntry[] = [];
-  const kinds = scope ? [scope] : (["staged", "unstaged"] as const);
-  for (const kind of kinds) {
+  for (const kind of ["staged", "unstaged"] as const) {
     for (const file of files) {
       if (kind === "staged" ? file.staged : file.unstaged) {
         entries.push({

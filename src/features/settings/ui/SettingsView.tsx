@@ -1,6 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { ConnectionsSettings } from "../../connections/ui/ConnectionsSettings";
 import { ask } from "@tauri-apps/plugin-dialog";
 import {
   ArrowDownCircle,
@@ -42,7 +41,6 @@ import { Popover } from "../../../shared/ui/Popover";
 import { SecondaryButton } from "../../../shared/ui/SecondaryButton";
 import { JiraSettings } from "./JiraSettings";
 import { GradientBlurBackground } from "./GradientBlurBackground";
-import { McpSettings } from "./McpSettings";
 import { InboxProviderMark } from "../../inbox/ui/InboxProviderMark";
 import { RemoveProjectDialog } from "../../projects/ui/RemoveProjectDialog";
 import { WindowControls } from "../../../app/shell/WindowControls";
@@ -97,10 +95,8 @@ import {
   saveSidebarOpacity,
   saveThemeHue,
   saveThemeSaturation,
-  isLightScheme,
   saveTranscriptLayout,
   saveTranscriptAnchor,
-  syncNativeGlass,
   TRANSCRIPT_ANCHOR_CHANGE_EVENT,
   loadShowExcludedFiles,
   saveShowExcludedFiles,
@@ -139,7 +135,8 @@ import {
   saveUiScale,
   subscribeUiScale,
   UI_SCALE_DEFAULT,
-  UI_SCALE_PERCENTS,
+  UI_SCALE_MAX,
+  UI_SCALE_MIN,
 } from "../model/uiScale";
 import {
   getHarnessAvailabilitySnapshot,
@@ -186,7 +183,7 @@ import {
   projectName,
 } from "../../../shared/lib/paths";
 import { revealPath } from "../../../platform/tauri/fs";
-import { IS_LINUX, IS_MAC, IS_WIN } from "../../../platform/tauri/platform";
+import { IS_MAC, IS_WIN } from "../../../platform/tauri/platform";
 import {
   loadArchivedProjects,
   looksLikeProject,
@@ -223,15 +220,9 @@ import { removeProviderAccountCredentials } from "../../providers/model/provider
 import {
   identityKey,
   identityOrganizationTag,
+  identitySubtitle,
   useProviderAccountIdentities,
 } from "../../providers/model/providerAccountIdentity";
-import { ProviderAccountSubtitle } from "../../providers/ui/ProviderAccountSubtitle";
-import {
-  saveMaskEmails,
-  saveShowRemainingUsage,
-  useMaskEmails,
-  useShowRemainingUsage,
-} from "../model/displayPrefs";
 import {
   accountStatus,
   accountUsageKey,
@@ -547,15 +538,11 @@ export function SettingsView({
               {section === "general" ? (
                 <GeneralPage onOpenWhatsNew={onOpenWhatsNew} />
               ) : null}
-              {section === "connections" ? <ConnectionsSettings /> : null}
               {section === "appearance" ? (
                 <AppearancePage appearance={appearance} />
               ) : null}
               {section === "chat" ? <ChatPage /> : null}
               {section === "keybindings" ? <KeybindingsPage /> : null}
-              {section === "mcp" ? (
-                <McpSettings cwd={cwd} recents={recents} />
-              ) : null}
               {section === "providers" ? (
                 <ProvidersPage cwd={cwd} recents={recents} />
               ) : null}
@@ -1879,7 +1866,6 @@ function useAppearanceSettings(
     applyBodyGlass(next);
     saveBodyGlass(next);
     setBodyGlass(next);
-    if (IS_LINUX) syncNativeGlass(isLightScheme() ? "light" : "dark");
   }, []);
 
   const onShowExcludedFiles = useCallback((next: boolean) => {
@@ -2209,14 +2195,14 @@ function AppearancePage({ appearance }: { appearance: AppearanceSettings }) {
           label="Interface scale"
           description="Zoom the whole interface. You can also use Ctrl+=, Ctrl+-, and Ctrl+0 (Cmd on macOS)."
         >
-          <Select
+          <Slider
             label="Interface scale"
-            value={String(Math.round(appearance.uiScale * 100))}
-            options={UI_SCALE_PERCENTS.map((percent) => ({
-              value: String(percent),
-              label: `${percent}%`,
-            }))}
-            onChange={(value) => appearance.onUiScale(Number(value))}
+            value={Math.round(appearance.uiScale * 100)}
+            display={`${Math.round(appearance.uiScale * 100)}%`}
+            min={Math.round(UI_SCALE_MIN * 100)}
+            max={Math.round(UI_SCALE_MAX * 100)}
+            step={10}
+            onChange={appearance.onUiScale}
           />
         </Row>
         <Row
@@ -3177,8 +3163,6 @@ function ProvidersPage({
     <>
       <ProviderAccountsSettings />
 
-      <UsageDisplaySettings />
-
       <Group
         id="agent-clis"
         title="Agent CLIs"
@@ -3251,37 +3235,6 @@ function ProvidersPage({
         </Row>
       </Group>
     </>
-  );
-}
-
-function UsageDisplaySettings() {
-  const showRemainingUsage = useShowRemainingUsage();
-  const maskEmails = useMaskEmails();
-  return (
-    <Group title="Usage and privacy">
-      <Row
-        id="show-remaining-usage"
-        label="Show remaining usage"
-        description="Fill usage meters with what is left in each limit instead of what has been used."
-      >
-        <Toggle
-          label="Show remaining usage"
-          on={showRemainingUsage}
-          onChange={saveShowRemainingUsage}
-        />
-      </Row>
-      <Row
-        id="mask-emails"
-        label="Mask account emails"
-        description="Blur account emails in Settings and the usage popover until you click one, so they stay out of screenshots."
-      >
-        <Toggle
-          label="Mask account emails"
-          on={maskEmails}
-          onChange={saveMaskEmails}
-        />
-      </Row>
-    </Group>
   );
 }
 
@@ -3469,15 +3422,12 @@ function ProviderAccountsSettings() {
                           status={accountStatus(limits, usage.now)}
                           className="shrink-0"
                         />
-                        <ProviderAccountSubtitle
-                          identity={identity}
-                          fallback={
-                            account.isDefault
+                        <span className="min-w-0 truncate text-content/30">
+                          {identitySubtitle(identity) ??
+                            (account.isDefault
                               ? "Provider CLI profile"
-                              : "Isolated profile"
-                          }
-                          className="truncate text-content/30"
-                        />
+                              : "Isolated profile")}
+                        </span>
                       </div>
                     </div>
                     <AccountUsageMeters limits={limits} now={usage.now} />

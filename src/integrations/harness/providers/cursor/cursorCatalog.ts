@@ -42,23 +42,22 @@ export function refreshCursorCatalog(): Promise<void> {
   return inflight;
 }
 
-export async function discoverCursorModels(workingDirectory?: string): Promise<AgentModel[]> {
-  const fromAcp = await discoverViaAcp(workingDirectory).catch((error: unknown) => {
+async function discoverCursorModels(): Promise<AgentModel[]> {
+  const fromAcp = await discoverViaAcp().catch((error: unknown) => {
     console.debug("[monocode] cursor ACP catalog failed", error);
     return [];
   });
   if (fromAcp.length > 0) return fromAcp;
-  return discoverViaCli(workingDirectory).catch((error: unknown) => {
+  return discoverViaCli().catch((error: unknown) => {
     console.debug("[monocode] cursor CLI catalog failed", error);
     return [];
   });
 }
 
-async function discoverViaAcp(workingDirectory?: string): Promise<AgentModel[]> {
+async function discoverViaAcp(): Promise<AgentModel[]> {
   const { path } = await resolveCursorBinary();
-  const cwd = workingDirectory ?? (await homeDir());
-  const probeId = `${PROBE_ID}-${crypto.randomUUID()}`;
-  const acp = new AcpClient(probeId, {
+  const cwd = await homeDir();
+  const acp = new AcpClient(PROBE_ID, {
     onRequest: (id) => {
       void acp.respond(id, {}).catch(() => undefined);
     },
@@ -66,18 +65,18 @@ async function discoverViaAcp(workingDirectory?: string): Promise<AgentModel[]> 
 
   const stop = async () => {
     acp.close();
-    unwatchChild(probeId);
-    await killChild(probeId).catch(() => undefined);
+    unwatchChild(PROBE_ID);
+    await killChild(PROBE_ID).catch(() => undefined);
   };
 
   watchChild(
-    probeId,
+    PROBE_ID,
     (line) => acp.pushLine(line),
     () => acp.close(new Error("Cursor probe exited")),
   );
 
   try {
-    await spawnChild(probeId, path, ["acp"], cwd, undefined, "cursor");
+    await spawnChild(PROBE_ID, path, ["acp"], cwd, undefined, "cursor");
     return await withTimeout(DISCOVERY_TIMEOUT_MS, async () => {
       await acp.request(
         "initialize",
@@ -113,9 +112,9 @@ async function discoverViaAcp(workingDirectory?: string): Promise<AgentModel[]> 
   }
 }
 
-async function discoverViaCli(workingDirectory?: string): Promise<AgentModel[]> {
+async function discoverViaCli(): Promise<AgentModel[]> {
   const { path } = await resolveCursorBinary();
-  const cwd = workingDirectory ?? (await homeDir());
+  const cwd = await homeDir();
   const stdout = await execChild(path, ["--list-models"], cwd, "cursor");
   return modelsFromListModelsOutput(stdout);
 }

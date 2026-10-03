@@ -20,7 +20,6 @@ import {
   workingTreeDiffFocusId,
 } from "../model/workingTreeDiff";
 import { stageChunkText } from "../../files/editor/editorGit";
-import { LINE_DIFF_CONFIG } from "../model/lineDiff";
 import { UnifiedDiffView, type UnifiedDiffFileModel } from "./UnifiedDiffView";
 
 type Props = {
@@ -68,7 +67,7 @@ export function WorkingTreeDiff({ cwd, focusPath, focusKind }: Props) {
           setFiles(index.files);
           setDiffs(new Map());
           setError(null);
-          const entries = workingTreeDiffEntries(index.files, focusKind);
+          const entries = workingTreeDiffEntries(index.files);
           const loadOrder = prioritizeWorkingTreeDiffEntries(
             entries,
             focusPath,
@@ -146,13 +145,9 @@ export function WorkingTreeDiff({ cwd, focusPath, focusKind }: Props) {
       window.removeEventListener("focus", onFocus);
       document.removeEventListener("visibilitychange", onFocus);
     };
-  }, [cwd, focusKind]);
+  }, [cwd]);
 
-  // A review opened from the Changes or Staged Changes section shows only that side.
-  const entries = useMemo(
-    () => workingTreeDiffEntries(files ?? [], focusKind),
-    [files, focusKind],
-  );
+  const entries = useMemo(() => workingTreeDiffEntries(files ?? []), [files]);
 
   const models = useMemo<UnifiedDiffFileModel[]>(() => {
     if (!files) return [];
@@ -249,14 +244,7 @@ export function WorkingTreeDiff({ cwd, focusPath, focusKind }: Props) {
       if (!entry || entry.kind !== "unstaged") return;
       const loaded = diffsRef.current.get(id);
       if (!loaded) return;
-      // Same diff the view used to produce `pos`, so the same hunk is staged.
-      const next = stageChunkText(
-        loaded.original,
-        loaded.current,
-        pos,
-        null,
-        LINE_DIFF_CONFIG,
-      );
+      const next = stageChunkText(loaded.original, loaded.current, pos);
       if (next == null) return;
       setBusyId(id);
       try {
@@ -296,7 +284,7 @@ export function WorkingTreeDiff({ cwd, focusPath, focusKind }: Props) {
   return (
     <UnifiedDiffView
       files={models}
-      fileCount={focusKind ? entries.length : files.length}
+      fileCount={files.length}
       focusId={focusId}
       busyId={busyId}
       totals={totals}
