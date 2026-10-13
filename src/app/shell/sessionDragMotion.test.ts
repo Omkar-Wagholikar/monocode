@@ -4,6 +4,8 @@ import {
   captureSessionListLayout,
   liftSessionGhost,
   playSessionListLayout,
+  settleSessionListDrop,
+  type SessionDragGhost,
 } from "./sessionDragMotion";
 
 function rect(top: number, left = 0): DOMRect {
@@ -55,7 +57,34 @@ describe("liftSessionGhost", () => {
   it("follows the pointer from where the card was grabbed", () => {
     const ghost = liftSessionGhost(card(), 30, 110);
     ghost.move(80, 150);
-    expect(ghostEl().style.transform).toContain("translate(50px, 40px)");
+    expect(ghostEl().style.translate).toBe("50px 40px");
+  });
+
+  it("keeps following the pointer while the lift animation runs", () => {
+    const animate = vi.spyOn(HTMLElement.prototype, "animate");
+    const ghost = liftSessionGhost(card(), 30, 110);
+    // The lift animates `transform` only, so it cannot override the
+    // `translate` that carries the ghost to the pointer.
+    const [keyframes] = animate.mock.calls[0];
+    for (const frame of keyframes as Keyframe[]) {
+      expect(frame).not.toHaveProperty("translate");
+      expect(String(frame.transform)).not.toContain("translate");
+    }
+    ghost.move(80, 150);
+    expect(ghostEl().style.translate).toBe("50px 40px");
+    expect(ghostEl().style.transform).not.toContain("translate");
+  });
+
+  it("shows the card again after quick repeated landings on it", () => {
+    vi.useFakeTimers();
+    const target = card();
+    liftSessionGhost(card(), 30, 110).land(target);
+    expect(target.style.opacity).toBe("0");
+    vi.advanceTimersByTime(100);
+    // A second drop of the same card while the first is still landing.
+    liftSessionGhost(card(), 30, 110).land(target);
+    vi.advanceTimersByTime(1000);
+    expect(target.style.opacity).toBe("");
   });
 
   it("removes itself on cancel, and on a drop with nowhere visible to land", () => {
@@ -136,5 +165,42 @@ describe("playSessionListLayout", () => {
     moved.getBoundingClientRect = () => rect(80);
     playSessionListLayout(list, before);
     expect(moved.animate).not.toHaveBeenCalled();
+  });
+});
+
+describe("settleSessionListDrop", () => {
+  it("measures the landing spot before the rows start sliding", () => {
+    const list = document.createElement("ul");
+    const folder = document.createElement("div");
+    folder.dataset.sessionFolder = "folder-1";
+    const dropped = document.createElement("div");
+    dropped.dataset.sessionCard = "dropped";
+    folder.appendChild(dropped);
+    list.appendChild(folder);
+    document.body.appendChild(list);
+
+    folder.getBoundingClientRect = () => rect(0);
+    dropped.getBoundingClientRect = () => rect(20);
+    const before = captureSessionListLayout(list);
+
+    // After the drop the folder sits lower. Its slide puts it back at the old
+    // spot for a moment, which would offset the card if measured then.
+    let sliding = false;
+    folder.getBoundingClientRect = () => rect(sliding ? 0 : 80);
+    dropped.getBoundingClientRect = () => rect(sliding ? 20 : 100);
+    folder.animate = vi.fn(() => {
+      sliding = true;
+    }) as unknown as HTMLElement["animate"];
+
+    const landedAt: number[] = [];
+    const ghost: SessionDragGhost = {
+      move: vi.fn(),
+      cancel: vi.fn(),
+      land: (target) => landedAt.push(target!.getBoundingClientRect().top),
+    };
+    settleSessionListDrop(list, before, "dropped", ghost);
+
+    expect(folder.animate).toHaveBeenCalled();
+    expect(landedAt).toEqual([100]);
   });
 });

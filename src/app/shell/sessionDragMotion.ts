@@ -15,6 +15,9 @@ function canAnimate(el: Element): el is HTMLElement {
   return el instanceof HTMLElement && typeof el.animate === "function";
 }
 
+/** Cards hidden under a landing ghost, and the timer that shows them again. */
+const pendingReveals = new WeakMap<HTMLElement, number>();
+
 export type SessionDragGhost = {
   /** Keep the lifted card under the pointer. */
   move(x: number, y: number): void;
@@ -78,15 +81,18 @@ export function liftSessionGhost(
     : `scale(${LIFT_SCALE}) rotate(${LIFT_TILT_DEG}deg)`;
   let dx = 0;
   let dy = 0;
+  // The pointer drives `translate` and the lift drives `transform`. They are
+  // separate properties, so the lift animation never pins the ghost in place.
   const place = () => {
-    ghost.style.transform = `translate(${dx}px, ${dy}px) ${lifted}`;
+    ghost.style.translate = `${dx}px ${dy}px`;
   };
   place();
+  ghost.style.transform = lifted;
   if (!still && canAnimate(ghost)) {
     ghost.animate(
       [
-        { transform: "translate(0, 0)", boxShadow: "0 0 0 rgb(0 0 0 / 0)" },
-        { transform: ghost.style.transform, boxShadow: ghost.style.boxShadow },
+        { transform: "none", boxShadow: "0 0 0 rgb(0 0 0 / 0)" },
+        { transform: lifted, boxShadow: ghost.style.boxShadow },
       ],
       { duration: LIFT_MS, easing: EASE },
     );
@@ -100,12 +106,13 @@ export function liftSessionGhost(
       ghost.remove();
       return;
     }
-    const to = `translate(${rect.left - origin.left}px, ${rect.top - origin.top}px)`;
+    const to = `${rect.left - origin.left}px ${rect.top - origin.top}px`;
     const flight = ghost.animate(
       [
-        { transform: ghost.style.transform, opacity: 1 },
+        { translate: ghost.style.translate, transform: lifted, opacity: 1 },
         {
-          transform: to,
+          translate: to,
+          transform: "none",
           opacity: fade ? 0 : 1,
           boxShadow: "0 0 0 rgb(0 0 0 / 0)",
         },
@@ -132,14 +139,21 @@ export function liftSessionGhost(
       }
       // The real card is drawn in place underneath; hide it until the ghost
       // arrives so the drop reads as one card moving, not two.
-      const reveal = target.style.opacity;
+      // Always reveal to the stylesheet's opacity, never to a saved value: a
+      // quick second drop of the same card would otherwise save the "0" set
+      // by the first landing and restore it after the first one has ended.
+      window.clearTimeout(pendingReveals.get(target));
       target.style.opacity = "0";
       flyTo(target.getBoundingClientRect(), false);
-      window.setTimeout(
-        () => {
-          target.style.opacity = reveal;
-        },
-        still ? 0 : SETTLE_MS,
+      pendingReveals.set(
+        target,
+        window.setTimeout(
+          () => {
+            pendingReveals.delete(target);
+            target.style.opacity = "";
+          },
+          still ? 0 : SETTLE_MS,
+        ),
       );
     },
     cancel() {
@@ -220,4 +234,23 @@ export function playSessionListLayout(
       { duration: REFLOW_MS, easing: EASE },
     );
   }
+}
+
+/**
+ * Finish a drop onto the list after it has been committed: land the ghost,
+ * then slide the other rows. The landing spot is measured first because the
+ * slide offsets rows (and the folders that hold the dropped card) for a moment.
+ */
+export function settleSessionListDrop(
+  list: HTMLElement | null,
+  before: ListLayout,
+  sessionId: string,
+  ghost: SessionDragGhost | null,
+) {
+  ghost?.land(
+    list?.querySelector<HTMLElement>(
+      `[data-session-card="${CSS.escape(sessionId)}"]`,
+    ) ?? null,
+  );
+  playSessionListLayout(list, before, sessionId);
 }

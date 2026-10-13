@@ -68,7 +68,7 @@ import { flushSync } from "react-dom";
 import {
   captureSessionListLayout,
   liftSessionGhost,
-  playSessionListLayout,
+  settleSessionListDrop,
   type SessionDragGhost,
 } from "./sessionDragMotion";
 import { nextUnseenFinishedSessions } from "../../features/sessions/model/sessionDone";
@@ -3405,12 +3405,7 @@ const SessionCard = memo(function SessionCard({
         const before = captureSessionListLayout(list);
         // Commit now so the new layout can be measured and animated into.
         flushSync(() => onListDrop?.(session.id, listOver));
-        playSessionListLayout(list, before, session.id);
-        ghost?.land(
-          list?.querySelector<HTMLElement>(
-            `[data-session-card="${CSS.escape(session.id)}"]`,
-          ) ?? null,
-        );
+        settleSessionListDrop(list, before, session.id, ghost);
         return;
       }
       const over = paneDropFromPoint(lastX, lastY);
